@@ -102,15 +102,15 @@ The command line is pretty straight-forward:
 To take full advantage of howdou, you'll need to maintain a local howdou.yml
 file, which is a simple serialized list of QA-sets that look like:
 
--   questions:
-    -   format date bash
-    answers:
-    -   weight: 1
-        date: 2014-5-14
-        source: http://stackoverflow.com/questions/1401482/yyyy-mm-dd-format-date-in-shell-script
-        formatter: bash
-        text: |-
-            DATE=`date +%Y-%m-%d`
+    -   questions:
+        -   format date bash
+        answers:
+        -   weight: 1
+            date: 2014-5-14
+            source: http://stackoverflow.com/questions/1401482/yyyy-mm-dd-format-date-in-shell-script
+            formatter: bash
+            text: |-
+                DATE=`date +%Y-%m-%d`
 
 Note each item is an association of many-questions to many-answers.
 This is because there are many ways to ask the same thing, and we want the
