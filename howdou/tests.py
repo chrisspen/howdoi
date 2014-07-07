@@ -1,17 +1,17 @@
 #!/usr/bin/env python
-
 """Tests for Howdou."""
+
 import os
 import unittest
 
-from howdou import howdou
-
+from . import howdou
 
 class HowdouTestCase(unittest.TestCase):
 
     def call_howdou(self, query):
         parser = howdou.get_parser()
         args = vars(parser.parse_args(query.split(' ')))
+        print('args:',args)
         return howdou.howdou(args)
 
     def setUp(self):
@@ -24,6 +24,10 @@ class HowdouTestCase(unittest.TestCase):
                            'hello world em c']
         self.bad_queries = ['moe',
                             'mel']
+                            
+        howdou.KNOWLEDGEBASE_FN = '/tmp/.howdou.yml'
+        howdou.KNOWLEDGEBASE_INDEX = 'test-howdou'
+        howdou.KNOWLEDGEBASE_TIMESTAMP_FN = '/tmp/.howdou_last'
 
     def tearDown(self):
         pass
@@ -52,7 +56,10 @@ class HowdouTestCase(unittest.TestCase):
 
     def test_answer_links(self):
         for query in self.queries:
-            self.assertTrue('http://' in self.call_howdou(query + ' -l'))
+            print('query:',query)
+            ret = self.call_howdou(query + ' -l')
+            print('ret:',ret)
+            self.assertTrue('http://' in ret)
 
     def test_position(self):
         query = self.queries[0]

@@ -119,3 +119,11 @@ answer.
 
 There's also an explicit weight value, which will be incorporated into
 Elasticsearch's own search weight to control the order that results are shown.
+
+Development
+-----------
+
+You can run unittests by downloading and extracting the source tarball
+and running:
+
+    python setup.py test

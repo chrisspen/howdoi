@@ -40,6 +40,7 @@ from requests.exceptions import SSLError
 
 import yaml
 from elasticsearch import Elasticsearch
+from elasticsearch.exceptions import NotFoundError, TransportError
 import dateutil.parser
 
 # Handle unicode between Python 2 and 3
@@ -197,7 +198,6 @@ def get_answer(args, links):
     text = text.strip()
     return text
 
-
 def get_instructions(args):
     answers = []
     append_header = args['num_answers'] > 1
@@ -208,61 +208,67 @@ def get_instructions(args):
     #http://elasticsearch.org/guide/reference/query-dsl/
     #http://www.elasticsearch.org/guide/en/elasticsearch/reference/current/query-dsl-query-string-query.html
     es = Elasticsearch()
-    results = es.search(
-        index=KNOWLEDGEBASE_INDEX,
-        body={
-            'query':{
-##                'query_string':{ # search all text fields
-##                    'query':query,
-##                },
-#                'field':{
-#                    'questions':{
-#                        'query':query,
-#                    }
-#                },
-                "function_score": {
-                    "query": {  
-                        "match": {
-                            "questions": query
-                        }
-                    },
-                    "functions": [{
-                        "script_score": { 
-                            "script": "doc['weight'].value"
-                        }
-                    }],
-                    "score_mode": "multiply"
-                }
+    try:
+        results = es.search(
+            index=KNOWLEDGEBASE_INDEX,
+            body={
+                'query':{
+    ##                'query_string':{ # search all text fields
+    ##                    'query':query,
+    ##                },
+    #                'field':{
+    #                    'questions':{
+    #                        'query':query,
+    #                    }
+    #                },
+                    "function_score": {
+                        "query": {  
+                            "match": {
+                                "questions": query
+                            }
+                        },
+                        "functions": [{
+                            "script_score": { 
+                                "script": "doc['weight'].value"
+                            }
+                        }],
+                        "score_mode": "multiply"
+                    }
+                },
+    #            'query':{
+    #                'field':{
+    #                    'questions':{
+    #                        'query':query,
+    #                    }
+    #                },
+    #            },
             },
-#            'query':{
-#                'field':{
-#                    'questions':{
-#                        'query':query,
-#                    }
-#                },
-#            },
-        },
-    )
-#    from pprint import pprint
-#    pprint(results['hits']['hits'],indent=4)
-    hits = results['hits']['hits'][:args['num_answers']]
-    if hits:
-        answer_number = -1
-        for hit in hits:
-            answer_number += 1
-            current_position = answer_number + initial_position
-            answer = hit['_source']['answer'].strip()
-            #TODO:sort/boost by weight?
-            #TODO:ignore low weights?
-            score = hit['_score']
-            if score < float(args['min_score']):
-                continue
-            if args['show_score']:
-                answer = ('score: %s\n' % score) + answer
-            if append_header:
-                answer = ANSWER_HEADER.format(current_position, answer)
-            answer = answer + '\n'
-            answers.append(answer)
+        )
+        
+    #    pprint(results['hits']['hits'],indent=4)
+        hits = results['hits']['hits'][:args['num_answers']]
+        if hits:
+            answer_number = -1
+            for hit in hits:
+                print('hit',hit)
+                answer_number += 1
+                current_position = answer_number + initial_position
+                answer = hit['_source']['answer'].strip()
+                #TODO:sort/boost by weight?
+                #TODO:ignore low weights?
+                score = hit['_score']
+                if score < float(args['min_score']):
+                    continue
+                if args['show_score']:
+                    answer = ('score: %s\n' % score) + answer
+                if append_header:
+                    answer = ANSWER_HEADER.format(current_position, answer)
+                answer = answer + '\n'
+                answers.append(answer)
+                
+    except NotFoundError as e:
+        print(e)
+        pass
     
     # If we found nothing satisfying locally, then search the net.
     if not answers:
@@ -319,15 +325,13 @@ def init_kb():
 ''')
 
 def index_kb():
-    print 'Re-indexing...'
+    print('Re-indexing...')
     es = Elasticsearch()
     count = 0
     for item in yaml.load(open(os.path.expanduser(KNOWLEDGEBASE_FN))):
-        #print item
         questions = '\n'.join(item['questions'])
         for answer in item['answers']:
             count += 1
-            #print count,answer
             weight = float(answer.get('weight', 1))
             dt = answer['date']
             if isinstance(dt, basestring):
@@ -342,6 +346,7 @@ def index_kb():
                 body=dict(
                     questions=questions,
                     answer=answer['text'],
+                    source=answer.get('source', ''),
                     text=questions + ' ' + answer['text'],
                     timestamp=dt,
                     weight=weight,
@@ -349,7 +354,7 @@ def index_kb():
             )
     es.indices.refresh(index=KNOWLEDGEBASE_INDEX)
     update_kb_timestamp()
-    print 'Re-indexed %i items.' % (count,)
+    print('Re-indexed %i items.' % (count,))
 
 def get_parser():
     parser = argparse.ArgumentParser(description='instant coding answers via the command line')
