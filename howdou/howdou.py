@@ -250,7 +250,7 @@ def get_instructions(args):
         if hits:
             answer_number = -1
             for hit in hits:
-                print('hit',hit)
+                #print('hit',hit)
                 answer_number += 1
                 current_position = answer_number + initial_position
                 answer = hit['_source']['answer'].strip()
