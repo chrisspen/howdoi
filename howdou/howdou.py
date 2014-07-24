@@ -200,7 +200,8 @@ def get_answer(args, links):
 
 def get_instructions(args):
     answers = []
-    append_header = args['num_answers'] > 1
+    append_header = args['num_answers'] > 1 \
+        or args['show_score'] or args['show_source']
     initial_position = args['pos']
     query = args['query']
     
