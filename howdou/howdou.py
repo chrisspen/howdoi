@@ -259,9 +259,17 @@ def get_instructions(args):
                 score = hit['_score']
                 if score < float(args['min_score']):
                     continue
+                answer_prefixes = []
+                
                 if args['show_score']:
-                    answer = ('score: %s\n' % score) + answer
+                    answer_prefixes.append('score: %s' % score)
+                    
+                if args['show_source'] and hit['_source'].get('source'):
+                    answer_prefixes.append('source: %s' % hit['_source']['source'])
+                    
                 if append_header:
+                    if answer_prefixes:
+                        answer = '\n'.join(answer_prefixes) + '\n\n' + answer
                     answer = ANSWER_HEADER.format(current_position, answer)
                 answer = answer + '\n'
                 answers.append(answer)
@@ -373,8 +381,16 @@ def get_parser():
                         action='store_true')
     parser.add_argument('--reindex', help='refresh the elasticsearch index', default=False,
                         action='store_true')
-    parser.add_argument('--show-score', help='display score of all results', default=False,
-                        action='store_true')
+    parser.add_argument(
+        '--show-score',
+        help='display score of all results',
+        default=False,
+        action='store_true')
+    parser.add_argument(
+        '--show-source',
+        help='displays any source linked to the answer',
+        default=False,
+        action='store_true')
     return parser
 
 def command_line_runner():
@@ -403,8 +419,6 @@ def command_line_runner():
         print(howdou(args).encode('utf-8', 'ignore'))
     else:
         print(howdou(args))
-
-
 
 if __name__ == '__main__':
     command_line_runner()
