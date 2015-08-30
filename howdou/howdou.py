@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+from __future__ import print_function
 
 ######################################################
 #
@@ -43,6 +44,8 @@ from elasticsearch import Elasticsearch
 from elasticsearch.exceptions import NotFoundError, TransportError
 import dateutil.parser
 
+from lockfile import LockFile, LockTimeout
+
 # Handle unicode between Python 2 and 3
 # http://stackoverflow.com/a/6633040/305414
 if sys.version < '3':
@@ -56,6 +59,8 @@ else:
 KNOWLEDGEBASE_FN = os.path.expanduser(os.getenv('HOWDOU_KB', '~/.howdou.yml'))
 KNOWLEDGEBASE_INDEX = os.getenv('HOWDOU_INDEX', 'howdou')
 KNOWLEDGEBASE_TIMESTAMP_FN = os.path.expanduser(os.getenv('HOWDOU_TIMESTAMP', '~/.howdou_last'))
+
+LOCKFILE_PATH = os.path.expanduser(os.getenv('HOWDOU_LOCKFILE', '~/.howdou_lock'))
 
 if os.getenv('HOWDOU_DISABLE_SSL'):  # Set http instead of https
     SEARCH_URL = 'http://www.google.com/search?q=site:{0}%20{1}'
@@ -87,6 +92,9 @@ def touch(fname, times=None):
         os.utime(fname, times)
 
 def is_kb_updated():
+    """
+    Returns true if the knowledge base file has changed since the last run.
+    """
     if not os.path.isfile(KNOWLEDGEBASE_TIMESTAMP_FN):
         return True
     kb_last_modified = datetime.datetime.fromtimestamp(os.path.getmtime(KNOWLEDGEBASE_FN))
@@ -166,9 +174,13 @@ def format_output(code, args):
 
 
 def get_answer(args, links):
+    """
+    Given search arguments and a links of web links (usually Stackoverflow),
+    find the best answer to the search question.
+    """
     link = get_link_at_pos(links, args['pos'])
     if not link:
-        return False
+        return False, None
     if args.get('link'):
         return link
     page = get_result(link + '?answertab=votes')
@@ -196,10 +208,11 @@ def get_answer(args, links):
     if text is None:
         text = NO_ANSWER_MSG
     text = text.strip()
-    return text
+    return text, link
 
 def get_instructions(args):
     answers = []
+    ignore_local = args['ignore_local']
     append_header = args['num_answers'] > 1 \
         or args['show_score'] or args['show_source']
     initial_position = args['pos']
@@ -208,76 +221,78 @@ def get_instructions(args):
     # Check local index first.
     #http://elasticsearch.org/guide/reference/query-dsl/
     #http://www.elasticsearch.org/guide/en/elasticsearch/reference/current/query-dsl-query-string-query.html
-    es = Elasticsearch()
-    try:
-        results = es.search(
-            index=KNOWLEDGEBASE_INDEX,
-            body={
-                'query':{
-    ##                'query_string':{ # search all text fields
-    ##                    'query':query,
-    ##                },
-    #                'field':{
-    #                    'questions':{
-    #                        'query':query,
-    #                    }
-    #                },
-                    "function_score": {
-                        "query": {  
-                            "match": {
-                                "questions": query
-                            }
-                        },
-                        "functions": [{
-                            "script_score": { 
-                                "script": "doc['weight'].value"
-                            }
-                        }],
-                        "score_mode": "multiply"
-                    }
+    if not ignore_local:
+        es = Elasticsearch()
+        try:
+            results = es.search(
+                index=KNOWLEDGEBASE_INDEX,
+                body={
+                    'query':{
+        ##                'query_string':{ # search all text fields
+        ##                    'query':query,
+        ##                },
+        #                'field':{
+        #                    'questions':{
+        #                        'query':query,
+        #                    }
+        #                },
+                        "function_score": {
+                            "query": {  
+                                "match": {
+                                    "questions": query
+                                }
+                            },
+                            "functions": [{
+                                "script_score": { 
+                                    "script": "doc['weight'].value"
+                                }
+                            }],
+                            "score_mode": "multiply"
+                        }
+                    },
+        #            'query':{
+        #                'field':{
+        #                    'questions':{
+        #                        'query':query,
+        #                    }
+        #                },
+        #            },
                 },
-    #            'query':{
-    #                'field':{
-    #                    'questions':{
-    #                        'query':query,
-    #                    }
-    #                },
-    #            },
-            },
-        )
-        
-    #    pprint(results['hits']['hits'],indent=4)
-        hits = results['hits']['hits'][:args['num_answers']]
-        if hits:
-            answer_number = -1
-            for hit in hits:
-                #print('hit',hit)
-                answer_number += 1
-                current_position = answer_number + initial_position
-                answer = hit['_source']['answer'].strip()
-                #TODO:sort/boost by weight?
-                #TODO:ignore low weights?
-                score = hit['_score']
-                if score < float(args['min_score']):
-                    continue
-                answer_prefixes = []
-                
-                if args['show_score']:
-                    answer_prefixes.append('score: %s' % score)
+            )
+            
+        #    pprint(results['hits']['hits'],indent=4)
+            hits = results['hits']['hits'][:args['num_answers']]
+            if hits:
+                answer_number = -1
+                for hit in hits:
+                    #print('hit',hit)
+                    answer_number += 1
+                    current_position = answer_number + initial_position
+                    answer = hit['_source']['answer'].strip()
+                    #TODO:sort/boost by weight?
+                    #TODO:ignore low weights?
+                    score = hit['_score']
+                    if score < float(args['min_score']):
+                        continue
+                    answer_prefixes = []
                     
-                if args['show_source'] and hit['_source'].get('source'):
-                    answer_prefixes.append('source: %s' % hit['_source']['source'])
+                    if args['show_score']:
+                        answer_prefixes.append('score: %s' % score)
+                        
+                    if args['show_source']:
+                        source = (hit['_source'].get('source') or '').strip() or None
+                        answer_prefixes.append('source: %s (local)' % source)
+                        
+                    if append_header:
+                        if answer_prefixes:
+                            answer = '\n'.join(answer_prefixes) + '\n\n' + answer
+                        answer = ANSWER_HEADER.format(current_position, answer)
+                    answer = answer + '\n'
+                    answers.append(answer)
                     
-                if append_header:
-                    if answer_prefixes:
-                        answer = '\n'.join(answer_prefixes) + '\n\n' + answer
-                    answer = ANSWER_HEADER.format(current_position, answer)
-                answer = answer + '\n'
-                answers.append(answer)
-                
-    except NotFoundError as e:
-        print(e)
-        pass
+        except NotFoundError as e:
+            print(e)
+            pass
     
     # If we found nothing satisfying locally, then search the net.
     if not answers:
@@ -287,10 +302,14 @@ def get_instructions(args):
         for answer_number in range(args['num_answers']):
             current_position = answer_number + initial_position
             args['pos'] = current_position
-            answer = get_answer(args, links)
+            answer, link = get_answer(args, links)
             if not answer:
                 continue
+            answer_prefixes = []
             if append_header:
+                answer_prefixes.append('source: %s (remote)' % link)
+                if answer_prefixes:
+                    answer = '\n'.join(answer_prefixes) + '\n\n' + answer
                 answer = ANSWER_HEADER.format(current_position, answer)
             answer = answer + '\n'
             answers.append(answer)
@@ -357,6 +376,7 @@ def index_kb():
                     answer=answer['text'],
                     source=answer.get('source', ''),
                     text=questions + ' ' + answer['text'],
+                    action_subject=answer.get('action_subject'),
                     timestamp=dt,
                     weight=weight,
                 ),
@@ -382,16 +402,24 @@ def get_parser():
                         action='store_true')
     parser.add_argument('--reindex', help='refresh the elasticsearch index', default=False,
                         action='store_true')
+    parser.add_argument('--just-check', help='re-indexes if neessary', default=False,
+                        action='store_true')
+    parser.add_argument(
+        '--ignore-local',
+        help='ignore local cache',
+        default=False,
+        action='store_true')
     parser.add_argument(
         '--show-score',
         help='display score of all results',
         default=False,
         action='store_true')
     parser.add_argument(
-        '--show-source',
+        '--hide-source',
         help='displays any source linked to the answer',
-        default=False,
-        action='store_true')
+        dest='show_source',
+        default=True,
+        action='store_false')
     return parser
 
 def command_line_runner():
@@ -407,7 +435,7 @@ def command_line_runner():
     if args['reindex'] or is_kb_updated():
         index_kb()
 
-    if not args['query']:
+    if not args['query'] and not args['reindex'] and not args['just_check']:
         parser.print_help()
         return
 
@@ -415,11 +443,23 @@ def command_line_runner():
     if not os.getenv('HOWDOU_DISABLE_CACHE'):
         enable_cache()
 
-    print
-    if sys.version < '3':
-        print(howdou(args).encode('utf-8', 'ignore'))
-    else:
-        print(howdou(args))
+    if not args['just_check']:
+        print
+        if sys.version < '3':
+            print(howdou(args).encode('utf-8', 'ignore'))
+        else:
+            print(howdou(args))
 
 if __name__ == '__main__':
-    command_line_runner()
+    lock = LockFile(LOCKFILE_PATH)
+    try:
+        lock.acquire(timeout=60) # wait in seconds
+        command_line_runner()
+    except LockTimeout:
+        #lock.break_lock()
+        #lock.acquire()
+        print('Lock timeout.', file=sys.stderr)
+        sys.exit(1)
+    finally:
+        lock.release()
+        

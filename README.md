@@ -120,6 +120,14 @@ answer.
 There's also an explicit weight value, which will be incorporated into
 Elasticsearch's own search weight to control the order that results are shown.
 
+To automatically reindex your changes, checking every 5 minutes, run:
+
+    crontab -e
+
+and add the line:
+
+    */5 * * * * . /home/yourusername/.bash_aliases; howdou --just-check
+
 Development
 -----------
 
