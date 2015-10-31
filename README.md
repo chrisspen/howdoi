@@ -63,7 +63,21 @@ Installation
 
 First, install Elasticsearch. On Ubuntu, this is simply:
 
-    sudo apt-get install elasticsearch
+    sudo apt-get install default-jre elasticsearch
+
+or:
+
+    cd /tmp
+    wget https://download.elasticsearch.org/elasticsearch/release/org/elasticsearch/distribution/deb/elasticsearch/2.0.0/elasticsearch-2.0.0.deb
+    sudo dpkg -i elasticsearch-2.0.0.deb
+    sudo service elasticsearch start
+
+Enable inline script searches:
+
+    sudo sh -c "echo 'script.engine.groovy.inline.search: on' >> /etc/elasticsearch/elasticsearch.yml"
+    sudo service elasticsearch restart 
+
+Make sure that the version of ElasticSearch matches the version of the elasticsearch Python package installed in your virtualenv.
 
 Then install howdou via pip with:
 
@@ -76,6 +90,8 @@ or
 or
 
     python setup.py install
+
+https://elasticsearch-py.readthedocs.org/en/master/
 
 Usage
 -----

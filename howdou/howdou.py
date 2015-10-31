@@ -217,12 +217,15 @@ def get_instructions(args):
         or args['show_score'] or args['show_source']
     initial_position = args['pos']
     query = args['query']
+    if not query:
+        return ''
     
     # Check local index first.
     #http://elasticsearch.org/guide/reference/query-dsl/
     #http://www.elasticsearch.org/guide/en/elasticsearch/reference/current/query-dsl-query-string-query.html
     if not ignore_local:
         es = Elasticsearch()
+        #es.indices.create(index=KNOWLEDGEBASE_INDEX, ignore=400)
         try:
             results = es.search(
                 index=KNOWLEDGEBASE_INDEX,
@@ -330,6 +333,8 @@ def clear_cache():
 
 def howdou(args):
     args['query'] = ' '.join(args['query']).replace('?', '')
+    if not args['query']:
+        return ''
     try:
         return get_instructions(args) or 'Sorry, couldn\'t find any help with that topic\n'
     except (ConnectionError, SSLError):
@@ -357,7 +362,8 @@ def index_kb():
     es = Elasticsearch()
     count = 0
     for item in yaml.load(open(os.path.expanduser(KNOWLEDGEBASE_FN))):
-        questions = '\n'.join(item['questions'])
+        #print('questions:', item['questions'])
+        questions = u'\n'.join(map(unicode, item['questions']))
         for answer in item['answers']:
             count += 1
             weight = float(answer.get('weight', 1))
