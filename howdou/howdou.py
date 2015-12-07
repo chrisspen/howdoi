@@ -19,6 +19,7 @@ import requests
 import requests_cache
 import sys
 import time
+import hashlib
 
 try:
     from urllib.parse import quote as url_quote
@@ -59,6 +60,8 @@ else:
 KNOWLEDGEBASE_FN = os.path.expanduser(os.getenv('HOWDOU_KB', '~/.howdou.yml'))
 KNOWLEDGEBASE_INDEX = os.getenv('HOWDOU_INDEX', 'howdou')
 KNOWLEDGEBASE_TIMESTAMP_FN = os.path.expanduser(os.getenv('HOWDOU_TIMESTAMP', '~/.howdou_last'))
+
+APP_DATA_DIR = os.path.expanduser(os.getenv('HOWDOU_DIR', '~/.howdou'))
 
 LOCKFILE_PATH = os.path.expanduser(os.getenv('HOWDOU_LOCKFILE', '~/.howdou_lock'))
 
@@ -357,19 +360,65 @@ def init_kb():
             howdou --reindex
 ''')
 
-def index_kb():
-    print('Re-indexing...')
+def get_text_hash(text):
+    """
+    Returns the hash of the given text.
+    """
+    h = hashlib.sha512()
+    if not isinstance(text, unicode):
+        text = unicode(text, encoding='utf-8', errors='replace')
+    h.update(text.encode('utf-8','replace'))
+    return h.hexdigest()
+
+def mark_indexed(question_str, answer_str):
+    hash_fn = os.path.join(APP_DATA_DIR, get_text_hash(question_str))
+    hash_contents = get_text_hash(answer_str)
+    open(hash_fn, 'w').write(hash_contents)
+
+def is_indexed(question_str, answer_str):
+    """
+    Returns true if this exact combination has been previously indexed.
+    Returns false otherwise.
+    """
+    hash_fn = os.path.join(APP_DATA_DIR, get_text_hash(question_str))
+    if not os.path.isfile(hash_fn):
+        return False
+    hash_contents = get_text_hash(answer_str)
+    if open(hash_fn).read() != hash_contents:
+        return False
+    return True
+
+def index_kb(force=False):
+    print('')
     es = Elasticsearch()
     count = 0
+    
+    if not os.path.isdir(APP_DATA_DIR):
+        os.mkdir(APP_DATA_DIR)
+    
+    # Count total combinations so we can accurately measure progress.
+    total = 0
+    for item in yaml.load(open(os.path.expanduser(KNOWLEDGEBASE_FN))):
+        for answer in item['answers']:
+            total += 1
+        
     for item in yaml.load(open(os.path.expanduser(KNOWLEDGEBASE_FN))):
         #print('questions:', item['questions'])
         questions = u'\n'.join(map(unicode, item['questions']))
         for answer in item['answers']:
             count += 1
+            sys.stdout.write('\rRe-indexing %i of %i...' % (count, total))
+            sys.stdout.flush()
+            
+            if not force and is_indexed(questions, answer['text']):
+                continue
+            
             weight = float(answer.get('weight', 1))
             dt = answer['date']
             if isinstance(dt, basestring):
                 dt = dateutil.parser.parse(dt)
+                
+            # Register this combination in the database.
             es.index(
                 index=KNOWLEDGEBASE_INDEX,
                 doc_type='text',
@@ -387,9 +436,13 @@ def index_kb():
                     weight=weight,
                 ),
             )
+            
+            # Record a hash of this combination so we can skip it next time.
+            mark_indexed(questions, answer['text'])
+            
     es.indices.refresh(index=KNOWLEDGEBASE_INDEX)
     update_kb_timestamp()
-    print('Re-indexed %i items.' % (count,))
+    print('\nRe-indexed %i items.' % (count,))
 
 def get_parser():
     parser = argparse.ArgumentParser(description='instant coding answers via the command line')
