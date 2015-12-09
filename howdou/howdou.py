@@ -389,7 +389,7 @@ def is_indexed(question_str, answer_str):
     return True
 
 def index_kb(force=False):
-    print('')
+    #print('')
     es = Elasticsearch()
     count = 0
     
@@ -401,7 +401,12 @@ def index_kb(force=False):
     for item in yaml.load(open(os.path.expanduser(KNOWLEDGEBASE_FN))):
         for answer in item['answers']:
             total += 1
-        
+    
+    if force:
+        es.indices.delete(
+            index=KNOWLEDGEBASE_INDEX,
+        )
+    
     for item in yaml.load(open(os.path.expanduser(KNOWLEDGEBASE_FN))):
         #print('questions:', item['questions'])
         questions = u'\n'.join(map(unicode, item['questions']))
@@ -446,23 +451,46 @@ def index_kb(force=False):
 
 def get_parser():
     parser = argparse.ArgumentParser(description='instant coding answers via the command line')
-    parser.add_argument('query', metavar='QUERY', type=str, nargs='*',
-                        help='the question to answer')
-    parser.add_argument('-p','--pos', help='select answer in specified position (default: 1)', default=1, type=int)
-    parser.add_argument('-a','--all', help='display the full text of the answer',
-                        action='store_true')
-    parser.add_argument('-l','--link', help='display only the answer link',
-                        action='store_true')
-    parser.add_argument('-c', '--color', help='enable colorized output',
-                        action='store_true')
-    parser.add_argument('-n','--num-answers', help='number of answers to return', default=1, type=int)
-    parser.add_argument('--min-score', help='the minimum score accepted on local answers', default=1, type=float)
-    parser.add_argument('-C','--clear-cache', help='clear the cache',
-                        action='store_true')
-    parser.add_argument('--reindex', help='refresh the elasticsearch index', default=False,
-                        action='store_true')
-    parser.add_argument('--just-check', help='re-indexes if neessary', default=False,
-                        action='store_true')
+    parser.add_argument(
+        'query', metavar='QUERY', type=str, nargs='*',
+        help='the question to answer')
+    parser.add_argument(
+        '-p','--pos',
+        help='select answer in specified position (default: 1)',
+        default=1, type=int)
+    parser.add_argument(
+        '-a','--all', help='display the full text of the answer',
+        action='store_true')
+    parser.add_argument(
+        '-l','--link', help='display only the answer link',
+        action='store_true')
+    parser.add_argument(
+        '-c', '--color', help='enable colorized output',
+        action='store_true')
+    parser.add_argument(
+        '-n','--num-answers',
+        help='number of answers to return',
+        default=1, type=int)
+    parser.add_argument(
+        '--min-score',
+        help='the minimum score accepted on local answers',
+        default=1, type=float)
+    parser.add_argument(
+        '-C','--clear-cache', help='clear the cache',
+        action='store_true')
+    parser.add_argument(
+        '--reindex', help='refresh the elasticsearch index',
+        default=False,
+        action='store_true')
+    parser.add_argument(
+        '--force',
+        help='Used with --reindex, forces reindexing of all items even if no change was made',
+        default=False,
+        action='store_true')
+    parser.add_argument(
+        '--just-check', help='re-indexes if neessary',
+        default=False,
+        action='store_true')
     parser.add_argument(
         '--ignore-local',
         help='ignore local cache',
@@ -492,7 +520,7 @@ def command_line_runner():
 
     init_kb()
     if args['reindex'] or is_kb_updated():
-        index_kb()
+        index_kb(force=args['force'])
 
     if not args['query'] and not args['reindex'] and not args['just_check']:
         parser.print_help()
