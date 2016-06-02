@@ -215,6 +215,7 @@ def get_answer(args, links):
 
 def get_instructions(args):
     answers = []
+    ignore_remote = args['ignore_remote']
     ignore_local = args['ignore_local']
     append_header = args['num_answers'] > 1 \
         or args['show_score'] or args['show_source']
@@ -297,11 +298,12 @@ def get_instructions(args):
                     answers.append(answer)
                     
         except NotFoundError as e:
-            print(e)
+            print('Local lookup error:', file=sys.stderr)
+            print(e, file=sys.stderr)
             pass
     
     # If we found nothing satisfying locally, then search the net.
-    if not answers:
+    if not answers and not ignore_remote:
         links = get_links(query)
         if not links:
             return False
@@ -421,7 +423,10 @@ def index_kb(force=False):
             weight = float(answer.get('weight', 1))
             dt = answer['date']
             if isinstance(dt, basestring):
-                dt = dateutil.parser.parse(dt)
+                try:
+                    dt = dateutil.parser.parse(dt)
+                except ValueError as e:
+                    raise Exception, 'Invalid date: %s' % dt
                 
             # Register this combination in the database.
             es.index(
@@ -494,6 +499,11 @@ def get_parser():
     parser.add_argument(
         '--ignore-local',
         help='ignore local cache',
+        default=False,
+        action='store_true')
+    parser.add_argument(
+        '--ignore-remote',
+        help='ignore remote',
         default=False,
         action='store_true')
     parser.add_argument(
