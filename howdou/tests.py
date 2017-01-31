@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 """Tests for Howdou."""
+from __future__ import print_function
 
 import os
 import unittest
@@ -11,7 +12,7 @@ class HowdouTestCase(unittest.TestCase):
     def call_howdou(self, query):
         parser = howdou.get_parser()
         args = vars(parser.parse_args(query.split(' ')))
-        print('args:',args)
+        print('args:', args)
         return howdou.howdou(args)
 
     def setUp(self):
@@ -56,9 +57,9 @@ class HowdouTestCase(unittest.TestCase):
 
     def test_answer_links(self):
         for query in self.queries:
-            print('query:',query)
+            print('query:', query)
             ret = self.call_howdou(query + ' -l')
-            print('ret:',ret)
+            print('ret:', ret)
             self.assertTrue('http://' in ret)
 
     def test_position(self):

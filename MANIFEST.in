@@ -1,1 +1,4 @@
 include CHANGES.txt
+include README.md
+include requirements.txt
+include requirements-test.txt

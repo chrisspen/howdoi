@@ -15,11 +15,14 @@ import glob
 import os
 import random
 import re
-import requests
-import requests_cache
 import sys
-import time
 import hashlib
+
+import requests
+from requests.exceptions import ConnectionError
+from requests.exceptions import SSLError
+
+import requests_cache
 
 try:
     from urllib.parse import quote as url_quote
@@ -33,16 +36,14 @@ except ImportError:
 
 from pygments import highlight
 from pygments.lexers import guess_lexer, get_lexer_by_name
-from pygments.formatters import TerminalFormatter
+from pygments.formatters import TerminalFormatter # pylint: disable=no-name-in-module
 from pygments.util import ClassNotFound
 
 from pyquery import PyQuery as pq
-from requests.exceptions import ConnectionError
-from requests.exceptions import SSLError
 
 import yaml
 from elasticsearch import Elasticsearch
-from elasticsearch.exceptions import NotFoundError, TransportError
+from elasticsearch.exceptions import NotFoundError#, TransportError
 import dateutil.parser
 
 from lockfile import LockFile, LockTimeout
@@ -130,7 +131,7 @@ def get_result(url):
 
 
 def is_question(link):
-    return re.search('questions/\d+/', link)
+    return re.search(r'questions/\d+/', link)
 
 
 def get_links(query):
@@ -300,7 +301,6 @@ def get_instructions(args):
         except NotFoundError as e:
             print('Local lookup error:', file=sys.stderr)
             print(e, file=sys.stderr)
-            pass
     
     # If we found nothing satisfying locally, then search the net.
     if not answers and not ignore_remote:
@@ -369,7 +369,7 @@ def get_text_hash(text):
     h = hashlib.sha512()
     if not isinstance(text, unicode):
         text = unicode(text, encoding='utf-8', errors='replace')
-    h.update(text.encode('utf-8','replace'))
+    h.update(text.encode('utf-8', 'replace'))
     return h.hexdigest()
 
 def mark_indexed(question_str, answer_str):
@@ -426,7 +426,7 @@ def index_kb(force=False):
                 try:
                     dt = dateutil.parser.parse(dt)
                 except ValueError as e:
-                    raise Exception, 'Invalid date: %s' % dt
+                    raise Exception('Invalid date: %s' % dt)
                 
             # Register this combination in the database.
             es.index(
@@ -460,20 +460,20 @@ def get_parser():
         'query', metavar='QUERY', type=str, nargs='*',
         help='the question to answer')
     parser.add_argument(
-        '-p','--pos',
+        '-p', '--pos',
         help='select answer in specified position (default: 1)',
         default=1, type=int)
     parser.add_argument(
-        '-a','--all', help='display the full text of the answer',
+        '-a', '--all', help='display the full text of the answer',
         action='store_true')
     parser.add_argument(
-        '-l','--link', help='display only the answer link',
+        '-l', '--link', help='display only the answer link',
         action='store_true')
     parser.add_argument(
         '-c', '--color', help='enable colorized output',
         action='store_true')
     parser.add_argument(
-        '-n','--num-answers',
+        '-n', '--num-answers',
         help='number of answers to return',
         default=1, type=int)
     parser.add_argument(
@@ -481,7 +481,7 @@ def get_parser():
         help='the minimum score accepted on local answers',
         default=1, type=float)
     parser.add_argument(
-        '-C','--clear-cache', help='clear the cache',
+        '-C', '--clear-cache', help='clear the cache',
         action='store_true')
     parser.add_argument(
         '--reindex', help='refresh the elasticsearch index',

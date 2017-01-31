@@ -77,6 +77,11 @@ Enable inline script searches:
     sudo sh -c "echo 'script.engine.groovy.inline.search: on' >> /etc/elasticsearch/elasticsearch.yml"
     sudo service elasticsearch restart 
 
+You may also need to enable the service to start at boot with:
+
+    sudo update-rc.d elasticsearch defaults
+    sudo update-rc.d elasticsearch enable
+
 Make sure that the version of ElasticSearch matches the version of the elasticsearch Python package installed in your virtualenv.
 
 Then install howdou via pip with:
@@ -147,7 +152,23 @@ and add the line:
 Development
 -----------
 
-You can run unittests by downloading and extracting the source tarball
-and running:
+Tests require the Python development headers to be installed, which you can install on Ubuntu with:
 
-    python setup.py test
+    sudo apt-get install python-dev python3-dev python3.4-dev pandoc
+
+To run unittests across multiple Python versions, install:
+
+    sudo apt-get install python3.4-minimal python3.4-dev python3.5-minimal python3.5-dev
+
+To run all [tests](http://tox.readthedocs.org/en/latest/):
+
+    export TESTNAME=; tox
+
+To run tests for a specific environment (e.g. Python 2.7):
+    
+    export TESTNAME=; tox -e py27
+
+To run a specific test:
+    
+    export TESTNAME=.testTimezone2; tox -e py27
+    
