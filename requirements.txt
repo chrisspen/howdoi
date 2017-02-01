@@ -1,5 +1,5 @@
 Pygments==1.5
-argparse==1.2.1
+argparse==1.4.0
 cssselect==0.7.1
 lxml==3.7.2
 pyquery==1.2.17
