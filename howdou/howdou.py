@@ -19,10 +19,12 @@ import sys
 import hashlib
 
 import requests
-from requests.exceptions import ConnectionError
+from requests.exceptions import ConnectionError # pylint: disable=redefined-builtin
 from requests.exceptions import SSLError
 
 import requests_cache
+
+from six import text_type, string_types
 
 try:
     from urllib.parse import quote as url_quote
@@ -92,7 +94,7 @@ CACHE_FILE = os.path.join(CACHE_DIR, 'cache{0}'.format(
         sys.version_info[0] if sys.version_info[0] == 3 else ''))
 
 def touch(fname, times=None):
-    with file(fname, 'a'):
+    with open(fname, 'a'):
         os.utime(fname, times)
 
 def is_kb_updated():
@@ -367,8 +369,8 @@ def get_text_hash(text):
     Returns the hash of the given text.
     """
     h = hashlib.sha512()
-    if not isinstance(text, unicode):
-        text = unicode(text, encoding='utf-8', errors='replace')
+    if not isinstance(text, text_type):
+        text = text_type(text, encoding='utf-8', errors='replace')
     h.update(text.encode('utf-8', 'replace'))
     return h.hexdigest()
 
@@ -411,7 +413,7 @@ def index_kb(force=False):
     
     for item in yaml.load(open(os.path.expanduser(KNOWLEDGEBASE_FN))):
         #print('questions:', item['questions'])
-        questions = u'\n'.join(map(unicode, item['questions']))
+        questions = u'\n'.join(map(text_type, item['questions']))
         for answer in item['answers']:
             count += 1
             sys.stdout.write('\rRe-indexing %i of %i...' % (count, total))
@@ -422,7 +424,7 @@ def index_kb(force=False):
             
             weight = float(answer.get('weight', 1))
             dt = answer['date']
-            if isinstance(dt, basestring):
+            if isinstance(dt, string_types):
                 try:
                     dt = dateutil.parser.parse(dt)
                 except ValueError as e:
