@@ -2,7 +2,7 @@ language: python
 python:
   - "3.5"
 install:
--   apt-get install pandoc
+-   sudo apt-get install pandoc
 -   pip install -r requirements.txt
 -   pip install -r requirements-test.txt
 script:
