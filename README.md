@@ -154,21 +154,18 @@ Development
 
 Tests require the Python development headers to be installed, which you can install on Ubuntu with:
 
-    sudo apt-get install python-dev python3-dev python3.4-dev pandoc
-
-To run unittests across multiple Python versions, install:
-
-    sudo apt-get install python3.4-minimal python3.4-dev python3.5-minimal python3.5-dev
+    sudo add-apt-repository ppa:fkrull/deadsnakes
+    sudo apt-get update
+    sudo apt-get install python-dev python3-dev python3.4-minimal python3.4-dev python3.5-minimal python3.5-dev pandoc
 
 To run all [tests](http://tox.readthedocs.org/en/latest/):
 
     export TESTNAME=; tox
 
 To run tests for a specific environment (e.g. Python 2.7):
-    
+
     export TESTNAME=; tox -e py27
 
 To run a specific test:
-    
-    export TESTNAME=.testTimezone2; tox -e py27
-    
+
+    export TESTNAME=:HowdouTestCase.test_unicode_answer; tox -e py27

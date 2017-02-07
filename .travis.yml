@@ -2,12 +2,14 @@ language: python
 python:
   - "3.5"
 install:
--   sudo apt-get install pandoc elasticsearch
+-   sudo add-apt-repository ppa:fkrull/deadsnakes -y
+-   sudo apt-get update
+-   sudo apt-get install -y python-dev python3-dev python3.4-minimal python3.4-dev python3.5-minimal python3.5-dev pandoc elasticsearch
+-   "dpkg --list | grep -i elasticsearch"
 -   sleep 5
 -   sudo service elasticsearch start
 -   sleep 5
--   pip install -r requirements.txt
--   pip install -r requirements-test.txt
+-   sudo pip install -r requirements-test.txt
 script:
 -   ./pep8.sh
 -   tox

@@ -97,6 +97,14 @@ def touch(fname, times=None):
     with open(fname, 'a'):
         os.utime(fname, times)
 
+def delete():
+    """
+    Forcibly deletes the index from the server.
+    """
+    print('delete.KNOWLEDGEBASE_INDEX:', KNOWLEDGEBASE_INDEX)
+    es = Elasticsearch()
+    es.indices.delete(index=KNOWLEDGEBASE_INDEX, ignore=[400, 404])
+
 def is_kb_updated():
     """
     Returns true if the knowledge base file has changed since the last run.
@@ -184,11 +192,15 @@ def get_answer(args, links):
     Given search arguments and a links of web links (usually Stackoverflow),
     find the best answer to the search question.
     """
+    print('get_answer: args:', args, 'links:', links)
     link = get_link_at_pos(links, args['pos'])
     if not link:
         return False, None
+        
+    # Don't lookup answer text, just return link.
     if args.get('link'):
-        return link
+        return None, link
+        
     page = get_result(link + '?answertab=votes')
     html = pq(page)
 
@@ -232,7 +244,8 @@ def get_instructions(args):
     #http://www.elasticsearch.org/guide/en/elasticsearch/reference/current/query-dsl-query-string-query.html
     if not ignore_local:
         es = Elasticsearch()
-        #es.indices.create(index=KNOWLEDGEBASE_INDEX, ignore=400)
+        print('create.KNOWLEDGEBASE_INDEX:', KNOWLEDGEBASE_INDEX)
+        es.indices.create(index=KNOWLEDGEBASE_INDEX, ignore=400)
         try:
             results = es.search(
                 index=KNOWLEDGEBASE_INDEX,
@@ -303,6 +316,7 @@ def get_instructions(args):
         except NotFoundError as e:
             print('Local lookup error:', file=sys.stderr)
             print(e, file=sys.stderr)
+            raise
     
     # If we found nothing satisfying locally, then search the net.
     if not answers and not ignore_remote:
@@ -312,14 +326,16 @@ def get_instructions(args):
         for answer_number in range(args['num_answers']):
             current_position = answer_number + initial_position
             args['pos'] = current_position
-            answer, link = get_answer(args, links)
-            if not answer:
+            result = get_answer(args, links)
+            print('result:', result)
+            answer, link = result
+            if not answer and not link:
                 continue
             answer_prefixes = []
             if append_header:
                 answer_prefixes.append('source: %s (remote)' % link)
                 if answer_prefixes:
-                    answer = '\n'.join(answer_prefixes) + '\n\n' + answer
+                    answer = '\n'.join(answer_prefixes) + '\n\n' + (answer or '')
                 answer = ANSWER_HEADER.format(current_position, answer)
             answer = answer + '\n'
             answers.append(answer)
@@ -407,9 +423,7 @@ def index_kb(force=False):
             total += 1
     
     if force:
-        es.indices.delete(
-            index=KNOWLEDGEBASE_INDEX,
-        )
+        delete()
     
     for item in yaml.load(open(os.path.expanduser(KNOWLEDGEBASE_FN))):
         #print('questions:', item['questions'])
