@@ -148,9 +148,10 @@ To automatically reindex your changes, checking every 5 minutes, run:
 and add these lines:
 
     # Do a quick frequent update.
-    */5 * * * * . /home/yourusername/.bash_aliases; howdou --just-check
+    */5 * * * * . /home/yourusername/.bash_aliases; howdou --action=reindex
+
     # Do a slower but more thorough update less frequently.
-    0 * * * * . /home/yourusername/.bash_aliases; howdou --reindex --force
+    0 6 * * * . /home/yourusername/.bash_aliases; howdou --action=reindex --force
 
 Elasticsearch
 -------------

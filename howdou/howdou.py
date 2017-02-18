@@ -8,14 +8,13 @@ import argparse
 import datetime
 import glob
 import os
-import random
 import re
 import sys
 import hashlib
 from pprint import pprint
 
 import requests
-from requests.exceptions import ConnectionError # pylint: disable=redefined-builtin
+#from requests.exceptions import ConnectionError # pylint: disable=redefined-builtin
 from requests.exceptions import SSLError
 
 import requests_cache
@@ -42,7 +41,7 @@ from pyquery import PyQuery as pq
 
 import yaml
 from elasticsearch import Elasticsearch
-from elasticsearch.exceptions import NotFoundError#, TransportError
+#from elasticsearch.exceptions import NotFoundError
 import dateutil.parser
 
 from fake_useragent import UserAgent
@@ -83,7 +82,7 @@ KNOWLEDGEBASE_STUB = '''-   questions:
             howdou --reindex
 '''
 
-if os.getenv('HOWDOU_DISABLE_SSL'):  # Set http instead of https
+if os.getenv('HOWDOU_DISABLE_SSL'): # Set http instead of https
     SEARCH_URL = 'http://www.google.com/search?q=site:{0}%20{1}'
 else:
     SEARCH_URL = 'https://www.google.com/search?q=site:{0}%20{1}'
@@ -95,7 +94,7 @@ LOCALIZATON_URLS = {
     'pt-br': 'pt.stackoverflow.com',
 }
 
-ANSWER_HEADER = u('--- Answer {i} --- {source} ---\n\n{answer}')
+ANSWER_HEADER = u('--- Answer {i} --- score: {score} --- weight: {weight} --- {source} ---\n\n{answer}')
 
 NO_ANSWER_MSG = '< no answer given >'
 
@@ -105,6 +104,21 @@ CLEAR_CACHE = 'clear-cache'
 ACTIONS = (QUERY, REINDEX, CLEAR_CACHE)
 
 ua = UserAgent()
+
+def get_link_at_pos(links, position):
+        
+    def is_question(link):
+        return re.search(r'questions/\d+/', link)
+        
+    links = [link for link in links if is_question(link)]
+    if not links:
+        return False
+
+    if len(links) >= position:
+        link = links[position-1]
+    else:
+        link = links[-1]
+    return link
 
 def touch(fname, times=None):
     with open(fname, 'a'):
@@ -184,7 +198,7 @@ class HowDoU(object):
     def get_result(self, url):
         try:
             return requests.get(url, headers={'User-Agent': ua.random}, proxies=get_proxies()).text
-        except requests.exceptions.SSLError as e:
+        except SSLError as e:
             print('[ERROR] Encountered an SSL Error. Try using HTTP instead of '
                   'HTTPS by setting the environment variable "HOWDOU_DISABLE_SSL".\n')
             raise e
@@ -194,21 +208,6 @@ class HowDoU(object):
         result = self.get_result(SEARCH_URL.format(localization_url, url_quote(query)))
         html = pq(result)
         return [a.attrib['href'] for a in html('.l')] or [a.attrib['href'] for a in html('.r')('a')]
-
-    def get_link_at_pos(self, links, position):
-            
-        def is_question(link):
-            return re.search(r'questions/\d+/', link)
-            
-        links = [link for link in links if is_question(link)]
-        if not links:
-            return False
-    
-        if len(links) >= position:
-            link = links[position-1]
-        else:
-            link = links[-1]
-        return link
 
     def format_output(self, code):
         if not self.color:
@@ -235,37 +234,37 @@ class HowDoU(object):
         Given search arguments and a links of web links (usually Stackoverflow),
         find the best answer to the search question.
         """
-        print('get_answer: args:', args, 'links:', links)
+        #print('get_answer: args:', args, 'links:', links)
         link = get_link_at_pos(links, self.pos)
         if not link:
             return False, None
             
         # Don't lookup answer text, just return link.
-        if args.get('link'):
+        if self.link:
             return None, link
             
-        page = get_result(link + '?answertab=votes')
+        page = self.get_result(link + '?answertab=votes')
         html = pq(page)
     
         first_answer = html('.answer').eq(0)
         instructions = first_answer.find('pre') or first_answer.find('code')
         self.tags = [t.text for t in html('.post-tag')]
     
-        if not instructions and not args['all']:
+        if not instructions and not self.all:
             text = first_answer.find('.post-text').eq(0).text()
-        elif args['all']:
+        elif self.all:
             texts = []
             for html_tag in first_answer.items('.post-text > *'):
                 current_text = html_tag.text()
                 if current_text:
                     if html_tag[0].tag in ['pre', 'code']:
-                        texts.append(format_output(current_text, args))
+                        texts.append(self.format_output(current_text))
                     else:
                         texts.append(current_text)
             texts.append('\n---\nAnswer from {0}'.format(link))
             text = '\n'.join(texts)
         else:
-            text = format_output(instructions.eq(0).text(), args)
+            text = self.format_output(instructions.eq(0).text())
         if text is None:
             text = NO_ANSWER_MSG
         text = text.strip()
@@ -326,6 +325,12 @@ class HowDoU(object):
         
         if not os.path.isdir(self.kb_app_dir):
             os.mkdir(self.kb_app_dir)
+            
+        if self.force:
+            self.delete_index()
+        elif not self.is_kb_updated():
+            print('No changes detected.')
+            return
         
         # Count total combinations so we can accurately measure progress.
         total = 0
@@ -333,9 +338,6 @@ class HowDoU(object):
         for item in yaml.load(open(self.kb_filename)):
             for answer in item['answers']:
                 total += 1
-        
-        if self.force:
-            delete()
         
         for item in yaml.load(open(self.kb_filename)):
             
@@ -472,6 +474,7 @@ class HowDoU(object):
                     answer_data['source'] = (hit['_source'].get('source') or '').strip() or None
                     answer_data['text'] = hit['_source']['text']
                     answer_data['weight'] = hit['_source']['weight']
+                    answer_data['location'] = 'local'
                     if self.verbose:
                         print('answer_data:')
                         pprint(answer_data, indent=4)
@@ -526,33 +529,62 @@ class HowDoU(object):
         #                 raise
                 
                 # If we found nothing satisfying locally, then search the net.
-        #         if not answers and not self.ignore_remote:
-        #             links = get_links(query)
-        #             if not links:
-        #                 return False
-        #             for answer_number in range(self.num_answers):
-        #                 current_position = answer_number + initial_position
-        #                 self.pos = current_position
-        #                 result = get_answer(args, links)
-        #                 print('result:', result)
-        #                 answer, link = result
-        #                 if not answer and not link:
-        #                     continue
-        #                 answer_prefixes = []
-        #                 if append_header:
-        #                     answer_prefixes.append('source: %s (remote)' % link)
-        #                     if answer_prefixes:
-        #                         answer = '\n'.join(answer_prefixes) + '\n\n' + (answer or '')
-        #                     answer = ANSWER_HEADER.format(current_position, answer)
-        #                 answer = answer + '\n'
-        #                 answers.append(answer)
+                if not answers and not self.ignore_remote:
+                    links = self.get_links(query)
+                    if not links:
+                        return False
+                    for answer_number in range(self.num_answers):
+                        #current_position = answer_number + initial_position
+#                         self.pos = current_position
+                        result = self.get_answer(links)
+#                         print('result:', result)
+                        answer, link = result
+                        if not answer and not link:
+                            continue
+#                         answer_prefixes = []
+#                         if append_header:
+#                             answer_prefixes.append('source: %s (remote)' % link)
+#                             if answer_prefixes:
+#                                 answer = '\n'.join(answer_prefixes) + '\n\n' + (answer or '')
+#                             answer = ANSWER_HEADER.format(current_position, answer)
+#                         answer = answer + '\n'
+                        
+                        answer_data = {}
+                        answer_data['answer'] = answer
+                        answer_data['score'] = 1.0
+                        answer_data['source'] = link
+                        answer_data['text'] = None
+                        answer_data['weight'] = 1.0
+                        answer_data['location'] = 'remote'
+                        answers.append(answer_data)
         
         if output:
             s = []
             for i, answer in enumerate(answers):
-                source_str = 'source: %s (remote)' % answer['source']
-                s.append(ANSWER_HEADER.format(i=i+1, answer=answer['answer'], source=source_str))
-            print('\n'+('\n\n'.join(s))+'\n')
+                source_str = 'source: %s (%s)' % (answer['source'], answer['location'])
+                s.append(ANSWER_HEADER.format(
+                    i=i+1,
+                    score=int(round(answer['score'] or 0, 0)),
+                    weight=int(answer['weight'] or 0),
+                    answer=answer['answer'],
+                    source=source_str))
+                    
+#         if not args['just_check']:
+#             if sys.version < '3':
+#                 print(howdou(args).encode('utf-8', 'ignore'))
+#             else:
+#                 print(howdou(args))
+
+#     if not args['just_check']:
+#         if sys.version < '3':
+#             print(howdou(args).encode('utf-8', 'ignore'))
+#         else:
+#             print(howdou(args))
+
+            output_str = u'\n'+(u'\n\n'.join(s))+u'\n'        
+            output_str.encode('utf-8', 'ignore')
+            print(output_str)
+            return output_str
                      
         return answers
         
@@ -566,16 +598,10 @@ class HowDoU(object):
     def run(self):
         run_func = 'run_%s' % self.action.replace('-', '_')
         if hasattr(self, run_func):
-            getattr(self, run_func)()
+            return getattr(self, run_func)()
         else:
             raise AttributeError('Invalid action: %s' % self.action)
-
-#         if not args['just_check']:
-#             if sys.version < '3':
-#                 print(howdou(args).encode('utf-8', 'ignore'))
-#             else:
-#                 print(howdou(args))
-#         
+         
 #         if not query:
 #             return ''
 #         try:
@@ -701,12 +727,6 @@ def command_line_runner():
     args = vars(parser.parse_args())
     howdou = HowDoU(**args)
     howdou.run()
- 
-#     if not args['just_check']:
-#         if sys.version < '3':
-#             print(howdou(args).encode('utf-8', 'ignore'))
-#         else:
-#             print(howdou(args))
 
 if __name__ == '__main__':
     command_line_runner()

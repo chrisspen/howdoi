@@ -23,9 +23,8 @@ class HowdouTestCase(unittest.TestCase):
     def call_howdou(self, query):
         parser = get_parser()
         args = vars(parser.parse_args(query.split(' ')))
-        print('args:', args)
-        #return howdou.howdou(args)
-        return HowDoU(**args).run()
+        ret = HowDoU(**args).run()
+        return ret
 
     def setUp(self):
         self.queries = [
@@ -62,7 +61,7 @@ class HowdouTestCase(unittest.TestCase):
         for path in delete_paths:
             try:
                 os.system('rm -Rf "%s"' % path)
-            except FileNotFoundError:
+            except OSError:#FileNotFoundError:
                 pass
 
         # Create a stub howdou objects for reference.
@@ -151,7 +150,7 @@ class HowdouTestCase(unittest.TestCase):
         # Search the index.
         self.howdou.ignore_local = False
         self.howdou.ignore_remote = True
-        ret = self.howdou.ask(q='how do I create a new howdou knowledge base entry', output=True)
+        ret = self.howdou.ask(q='how do I create a new howdou knowledge base entry', output=False)
         print('ret:')
         pprint(ret, indent=4)
         self.assertEqual(len(ret), 1)
@@ -181,14 +180,14 @@ answers:
         self.assertEqual(self.howdou.last_reindex_count, 2)
         
         # Ask the same question as before and ensure the result hasn't changed.
-        ret = self.howdou.ask(q='how do I create a new howdou knowledge base entry', output=True)
+        ret = self.howdou.ask(q='how do I create a new howdou knowledge base entry', output=False)
         print('ret:')
         pprint(ret, indent=4)
         self.assertEqual(len(ret), 1)
         self.assertEqual(ret[0]['answer'], 'nano ~/.howdou.yml\nhowdou --reindex')
         
         # Ask a new question that should match the new entry and confirm a new result.
-        ret = self.howdou.ask(q='how many toads can a pickle tickle', output=True)
+        ret = self.howdou.ask(q='how many toads can a pickle tickle', output=False)
         print('ret:')
         pprint(ret, indent=4)
         self.assertEqual(len(ret), 1)
@@ -219,14 +218,14 @@ answers:
         self.assertEqual(self.howdou.last_reindex_count, 3)
         
         # Ask our original question and confirm the original result.
-        ret = self.howdou.ask(q='how do I create a new howdou knowledge base entry', output=True)
+        ret = self.howdou.ask(q='how do I create a new howdou knowledge base entry', output=False)
         print('ret:')
         pprint(ret, indent=4)
         self.assertEqual(len(ret), 1)
         self.assertEqual(ret[0]['answer'], 'nano ~/.howdou.yml\nhowdou --reindex')
         
         # Ask a question that should find the new entry.
-        ret = self.howdou.ask(q='how do I delete a howdou knowledge base entry', output=True)
+        ret = self.howdou.ask(q='how do I delete a howdou knowledge base entry', output=False)
         print('ret:')
         pprint(ret, indent=4)
         self.assertEqual(len(ret), 1)
