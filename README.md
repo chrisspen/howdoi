@@ -145,9 +145,20 @@ To automatically reindex your changes, checking every 5 minutes, run:
 
     crontab -e
 
-and add the line:
+and add these lines:
 
-    */5 * * * * . /home/yourusername/.bash_aliases; howdou --just-check
+    # Do a quick frequent update.
+    */5 * * * * . /home/yourusername/.bash_aliases; howdou --action=reindex
+
+    # Do a slower but more thorough update less frequently.
+    0 6 * * * . /home/yourusername/.bash_aliases; howdou --action=reindex --force
+
+Elasticsearch
+-------------
+
+A caveat with the Elasticsearch backend is that the default configuration can be a huge memory hog.
+
+You'll probably want to edit `/etc/elasticsearch/jvm.options` and drastically reduce the values for `Xms` and `Xmx`.
 
 Development
 -----------
