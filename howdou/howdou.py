@@ -103,7 +103,9 @@ REINDEX = 'reindex'
 CLEAR_CACHE = 'clear-cache'
 ACTIONS = (QUERY, REINDEX, CLEAR_CACHE)
 
-ua = UserAgent()
+DEFAULT_USERAGENT = 'Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:51.0) Gecko/20100101 Firefox/51.0'
+
+ua = UserAgent(fallback=DEFAULT_USERAGENT)
 
 def get_link_at_pos(links, position):
         
