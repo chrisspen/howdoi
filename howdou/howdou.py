@@ -147,6 +147,16 @@ def get_proxies():
                 filtered_proxies[key] = value
     return filtered_proxies
 
+def find_true_link(s):
+    """
+    Sometimes Google wraps our links inside sneaky tracking links, which often fail and slow us down
+    so remove them. 
+    """
+    # Convert "/url?q=<real_url>" to "<real_url>".
+    if s and s.startswith('/') and 'http' in s:
+        s = s[s.find('http'):]
+    return s
+
 class HowDoU(object):
     
     def __init__(self, **kwargs):
@@ -244,8 +254,8 @@ class HowDoU(object):
         # Don't lookup answer text, just return link.
         if self.link:
             return None, link
-            
-        page = self.get_result(link + '?answertab=votes')
+
+        page = self.get_result(find_true_link(link) + '?answertab=votes')
         html = pq(page)
     
         first_answer = html('.answer').eq(0)

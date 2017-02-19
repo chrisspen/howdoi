@@ -74,6 +74,11 @@ class HowdouTestCase(unittest.TestCase):
     def tearDown(self):
         pass
 
+    def test_find_true_link(self):
+        s = '/url?q=http://stackoverflow.com/questions/11004721/how-to-do-i-convert-an-animated-gif-to-an-mp4-or-mv4-on-the-command-line&sa=U'
+        ret = howdou.find_true_link(s)
+        self.assertEqual(ret, 'http://stackoverflow.com/questions/11004721/how-to-do-i-convert-an-animated-gif-to-an-mp4-or-mv4-on-the-command-line&sa=U')
+
     def test_get_link_at_pos(self):
         self.assertEqual(howdou.get_link_at_pos(['/questions/42/'], 1), '/questions/42/')
         self.assertEqual(howdou.get_link_at_pos(['/questions/42/'], 2), '/questions/42/')
