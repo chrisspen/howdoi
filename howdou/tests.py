@@ -5,10 +5,13 @@ from __future__ import print_function
 from __future__ import unicode_literals
 
 import os
+import sys
 import unittest
+from unittest import TestCase as _TestCase
 from time import sleep
 from random import randint
 from pprint import pprint
+import traceback
 
 import yaml
 
@@ -18,7 +21,47 @@ from .howdou import HowDoU, get_parser
 # We throttle our queries, since they touch Google and if we go too fast Google starts throwing 404 errors.
 random_wait = lambda: sleep(randint(2, 6))
 
-class HowdouTestCase(unittest.TestCase):
+def _getattribute(cls, self, attrname):
+    
+    # Wrap test methods so we can capture their exceptions.
+    # The default unittest framework doesn't make this easy.
+    
+    def test_wrap(func):
+        def _wrap(*args, **kwargs):
+            try:
+                return func(*args, **kwargs)
+            except Exception as e:
+                print('!'*80, file=sys.stderr)
+                print('An exception was encountered in test method %s.' \
+                    % self._testMethodName, file=sys.stderr)
+                traceback.print_exc(file=sys.stderr)
+                print('!'*80, file=sys.stderr)
+                raise
+        return _wrap
+
+    attr = super(cls, self).__getattribute__(attrname)
+    
+    if attrname.startswith('test') and callable(attr):
+        attr = test_wrap(attr)
+    
+    return attr
+
+class TestCase(_TestCase):
+
+    test_name_fout = sys.stderr
+ 
+    test_name_format = '\n{bar}\nRunning test: {name}\n{bar}\n'
+
+    def setUp(self):
+        # Always print the current test name before the test.
+        kwargs = dict(
+            bar='#'*80,
+            name=self._testMethodName,
+        )
+        print(self.test_name_format.format(**kwargs), file=self.test_name_fout)
+        super(TestCase, self).setUp()
+
+class HowdouTestCase(TestCase):
 
     def call_howdou(self, query):
         parser = get_parser()
@@ -27,6 +70,8 @@ class HowdouTestCase(unittest.TestCase):
         return ret
 
     def setUp(self):
+        super(HowdouTestCase, self).setUp()
+        
         self.queries = [
             'format date bash',
             'print stack trace python',
@@ -236,9 +281,10 @@ answers:
         self.assertEqual(len(ret), 1)
         self.assertEqual(ret[0]['answer'], '1. open .howdou.yml\n2. find entry\n3. delete entry\n4. that\'s it')
 
-class HowdouTestCaseEnvProxies(unittest.TestCase):
+class HowdouTestCaseEnvProxies(TestCase):
 
     def setUp(self):
+        super(HowdouTestCaseEnvProxies, self).setUp()
         self.temp_get_proxies = howdou.getproxies
 
     def tearDown(self):
