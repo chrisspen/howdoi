@@ -103,7 +103,9 @@ REINDEX = 'reindex'
 CLEAR_CACHE = 'clear-cache'
 ACTIONS = (QUERY, REINDEX, CLEAR_CACHE)
 
-ua = UserAgent()
+DEFAULT_USERAGENT = 'Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:51.0) Gecko/20100101 Firefox/51.0'
+
+ua = UserAgent(fallback=DEFAULT_USERAGENT)
 
 def get_link_at_pos(links, position):
         
@@ -144,6 +146,16 @@ def get_proxies():
             else:
                 filtered_proxies[key] = value
     return filtered_proxies
+
+def find_true_link(s):
+    """
+    Sometimes Google wraps our links inside sneaky tracking links, which often fail and slow us down
+    so remove them. 
+    """
+    # Convert "/url?q=<real_url>" to "<real_url>".
+    if s and s.startswith('/') and 'http' in s:
+        s = s[s.find('http'):]
+    return s
 
 class HowDoU(object):
     
@@ -242,8 +254,8 @@ class HowDoU(object):
         # Don't lookup answer text, just return link.
         if self.link:
             return None, link
-            
-        page = self.get_result(link + '?answertab=votes')
+
+        page = self.get_result(find_true_link(link) + '?answertab=votes')
         html = pq(page)
     
         first_answer = html('.answer').eq(0)
