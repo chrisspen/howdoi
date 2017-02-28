@@ -594,8 +594,13 @@ class HowDoU(object):
 #             print(howdou(args))
 
             output_str = u'\n'+(u'\n\n'.join(s))+u'\n'        
-            output_str.encode('utf-8', 'ignore')
-            print(output_str)
+            output_str.encode('utf-8', 'replace')
+            try:
+                # Try to print unicode.
+                print(output_str)
+            except UnicodeEncodeError:
+                # If the console forces us to use ASCII, then force ASCII.
+                print(output_str.encode('ascii', 'replace'))
             return output_str
                      
         return answers
