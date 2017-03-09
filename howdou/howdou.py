@@ -514,6 +514,11 @@ class HowDoU(object):
         
     def run_query(self, q=None, output=True):
         query = q or self.query
+        
+        # Elasticsearch tokenizes text on certain non-alphanumeric characters,
+        # so increase a queries chances of finding an exact match by removing these tokens.
+        query = re.sub(r'[\:\-]+', ' ', query)
+        
         answers = []
         if query:
             with fasteners.InterProcessLock(self.kb_lockfile_path):
