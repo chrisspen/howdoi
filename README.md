@@ -1,6 +1,8 @@
 Howdou
 ====================================================
 
+[![](https://img.shields.io/pypi/v/howdou.svg)](https://pypi.python.org/pypi/howdou) [![Build Status](https://img.shields.io/travis/chrisspen/howdou.svg?branch=master)](https://travis-ci.org/chrisspen/howdou) [![](https://pyup.io/repos/github/chrisspen/howdou/shield.svg)](https://pyup.io/repos/github/chrisspen/howdou)
+
 This is a fork of Benjamin Gleitzman's excellent
 [Howdoi](https://github.com/gleitz/howdoi) tool.
 
