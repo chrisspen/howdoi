@@ -149,7 +149,7 @@ class HowdouTestCase(TestCase):
             print('query:', query)
             ret = self.call_howdou(query + ' -l')
             print('ret:', ret)
-            self.assertTrue('http://' in ret)
+            self.assertTrue('https://' in ret)
             random_wait()
 
     def test_position(self):
@@ -161,9 +161,11 @@ class HowdouTestCase(TestCase):
     def test_all_text(self):
         query = self.queries[0]
         first_answer = self.call_howdou(query)
+        print('first_answer:', first_answer)
         second_answer = self.call_howdou(query + ' -a')
+        print('second_answer:', second_answer)
         self.assertNotEqual(first_answer, second_answer)
-        self.assertTrue("Answer from http://stackoverflow.com" in second_answer)
+        self.assertTrue("Answer from https://stackoverflow.com" in second_answer)
 
     def test_multiple_answers(self):
         query = self.queries[0]

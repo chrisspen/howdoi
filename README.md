@@ -181,4 +181,4 @@ To run tests for a specific environment (e.g. Python 2.7):
 
 To run a specific test:
 
-    export TESTNAME=:HowdouTestCase.test_unicode_answer; tox -e py27
+    export TESTNAME=HowdouTestCase.test_unicode_answer; tox -e py27
