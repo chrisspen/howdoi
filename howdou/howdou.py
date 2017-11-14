@@ -354,6 +354,7 @@ class HowDoU(object):
         for item in yaml.load(open(self.kb_filename)):
             
             # Combine the list of separate questions into a single text block.
+            print('item:', item)
             questions = u'\n'.join(map(text_type, item['questions']))
             self.vprint('questions:', questions)
             

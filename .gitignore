@@ -48,6 +48,7 @@ coverage.xml
 # Django stuff:
 *.log
 *.pot
+*.out
 
 # Sphinx documentation
 docs/_build/
@@ -57,3 +58,4 @@ docs/_build/
 
 # PIP install version files.
 /=*
+*.geany
