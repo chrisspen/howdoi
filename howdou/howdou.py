@@ -11,7 +11,9 @@ import os
 import re
 import sys
 import hashlib
+import traceback
 from pprint import pprint
+from commands import getoutput
 
 import requests
 #from requests.exceptions import ConnectionError # pylint: disable=redefined-builtin
@@ -347,10 +349,15 @@ class HowDoU(object):
         # Count total combinations so we can accurately measure progress.
         total = 0
         self.vprint('kb_filename:', self.kb_filename)
-        for item in yaml.load(open(self.kb_filename)):
-            for answer in item['answers']:
-                total += 1
-        
+        try:
+            for item in yaml.load(open(self.kb_filename)):
+                for answer in item['answers']:
+                    total += 1
+        except yaml.scanner.ScannerError as exc:
+            traceback.print_exc()
+            getoutput('export DISPLAY=:0; notify-send "HowDoU Re-Indexing Error" "%s"' % exc)
+            sys.exit(1)
+
         for item in yaml.load(open(self.kb_filename)):
             
             # Combine the list of separate questions into a single text block.
