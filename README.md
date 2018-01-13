@@ -32,33 +32,30 @@ and read through blogs (risking major distraction) when you can simply stay
 in the console and ask howdou:
 
     $ howdou format date bash
-    > DATE=`date +%Y-%m-%d`
 
-howdou will answer all sorts of queries:
+    --- Answer 1 --- score: 78 --- weight: 1 --- source: http://stackoverflow.com/questions/1401482/yyyy-mm-dd-format-date-in-shell-script (local) ---
 
-    $ howdou print stack trace python
-    > import traceback
-    >
-    > try:
-    >     1/0
-    > except:
-    >     print '>>> traceback <<<'
-    >     traceback.print_exc()
-    >     print '>>> end of traceback <<<'
-    > traceback.print_exc()
+    echo $(date +%Y-%m-%d)
 
-    $ howdou convert mp4 to animated gif
-    > video=/path/to/video.avi
-    > outdir=/path/to/output.gif
-    > mplayer "$video" \
-    >         -ao null \
-    >         -ss "00:01:00" \  # starting point
-    >         -endpos 10 \ # duration in second
-    >         -vo gif89a:fps=13:output=$outdir \
-    >         -vf scale=240:180
+    $ howdou find cron logs
 
-    $ howdou create tar archive
-    > tar -cf backup.tar --exclude "www/subf3" www
+    --- Answer 1 --- score: 70 --- weight: 1 --- source: http://askubuntu.com/questions/56683/where-is-the-cron-crontab-log (local) ---
+
+    The default cron log is:
+
+        /var/log/syslog
+        
+    You can see filter cron entries in the logfile by running:
+
+        grep CRON /var/log/syslog
+
+These answers are pulled from your local answer cache. If you want to skip this and only search for answers online, run:
+
+    $ howdou find cron logs --ignore-local
+    
+    --- Answer 1 --- score: 1 --- weight: 1 --- source: /url?q=https://stackoverflow.com/questions/4811738/cron-job-log-how-to-log (remote) ---
+
+    * * * * * myjob.sh >> /var/log/myjob.log 2>&1
 
 Installation
 ------------
