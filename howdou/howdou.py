@@ -19,10 +19,12 @@ import requests
 #from requests.exceptions import ConnectionError # pylint: disable=redefined-builtin
 from requests.exceptions import SSLError
 
-import requests_cache
-
 #https://pythonhosted.org/six/
 from six import text_type, string_types
+
+import yaml
+
+import requests_cache
 
 try:
     from urllib.parse import quote as url_quote
@@ -41,7 +43,6 @@ from pygments.util import ClassNotFound
 
 from pyquery import PyQuery as pq
 
-import yaml
 from elasticsearch import Elasticsearch
 #from elasticsearch.exceptions import NotFoundError
 import dateutil.parser
