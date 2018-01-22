@@ -2,7 +2,7 @@ language: python
 python:
   - "3.5"
 install:
--   sudo add-apt-repository -y ppa:fkrull/deadsnakes
+-   sudo add-apt-repository -y ppa:deadsnakes/ppa
 # Elasticsearch 5.* requires Java 1.8 or higher.
 -   sudo apt-add-repository -y ppa:webupd8team/java
 -   sudo apt-get update
@@ -22,3 +22,4 @@ install:
 script:
 -   ./pep8.sh
 -   tox
+
