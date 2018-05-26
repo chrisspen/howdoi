@@ -22,10 +22,10 @@ from .howdou import HowDoU, get_parser
 random_wait = lambda: sleep(randint(2, 6))
 
 def _getattribute(cls, self, attrname):
-    
+
     # Wrap test methods so we can capture their exceptions.
     # The default unittest framework doesn't make this easy.
-    
+
     def test_wrap(func):
         def _wrap(*args, **kwargs):
             try:
@@ -40,16 +40,16 @@ def _getattribute(cls, self, attrname):
         return _wrap
 
     attr = super(cls, self).__getattribute__(attrname)
-    
+
     if attrname.startswith('test') and callable(attr):
         attr = test_wrap(attr)
-    
+
     return attr
 
 class TestCase(_TestCase):
 
     test_name_fout = sys.stderr
- 
+
     test_name_format = '\n{bar}\nRunning test: {name}\n{bar}\n'
 
     def setUp(self):
@@ -71,7 +71,7 @@ class HowdouTestCase(TestCase):
 
     def setUp(self):
         super(HowdouTestCase, self).setUp()
-        
+
         self.queries = [
             'format date bash',
             'print stack trace python',
@@ -87,7 +87,7 @@ class HowdouTestCase(TestCase):
             'moe',
             'mel',
         ]
-        
+
         # Define temporary locations for all persistent data files
         # so we don't corrupt any production system.
         howdou.KNOWLEDGEBASE_INDEX = 'howdou-test'
@@ -180,25 +180,25 @@ class HowdouTestCase(TestCase):
         assert self.call_howdou('delete remote git branch -a')
 
     def test_local_cache_index(self):
-        
+
 #         args = vars(parser.parse_args(query.split(' ')))
 #         hdu = HowDoU(**args).run()
-        
+
         # Create a seed knowledge base.
         self.howdou.init_kb()
         self.assertTrue(os.path.isfile(howdou.KNOWLEDGEBASE_FN))
         os.system('cat %s' % howdou.KNOWLEDGEBASE_FN)
-        
+
         # Confirm there's nothing yet indexed in our knowledge base.
         self.assertFalse(self.howdou.is_indexed(
             'how do I create a new howdou knowledge base entry',
             'nano ~/.howdou.yml\nhowdou --reindex',
         ))
-        
+
         # Re-index the knowledge base file.
         self.howdou.verbose = True
         self.howdou.reindex()
-        
+
         # Search the index.
         self.howdou.ignore_local = False
         self.howdou.ignore_remote = True
@@ -207,17 +207,17 @@ class HowdouTestCase(TestCase):
         pprint(ret, indent=4)
         self.assertEqual(len(ret), 1)
         self.assertEqual(ret[0]['answer'], 'nano ~/.howdou.yml\nhowdou --reindex')
-        
+
         # Add a new item that should not conflict with the existing one.
         item = yaml.load('''
 questions:
 -   how many toads can a pickle tickle
 tags:
--   context: 
+-   context:
 answers:
 -   weight: 1
     date: 2017-2-1
-    source: 
+    source:
     tags:
     formatter: nl
     action_subject: []
@@ -230,14 +230,14 @@ answers:
         print(open(self.howdou.kb_filename).read())
         self.howdou.reindex()
         self.assertEqual(self.howdou.last_reindex_count, 2)
-        
+
         # Ask the same question as before and ensure the result hasn't changed.
         ret = self.howdou.ask(q='how do I create a new howdou knowledge base entry', output=False)
         print('ret:')
         pprint(ret, indent=4)
         self.assertEqual(len(ret), 1)
         self.assertEqual(ret[0]['answer'], 'nano ~/.howdou.yml\nhowdou --reindex')
-        
+
         # Ask a new question that should match the new entry and confirm a new result.
         ret = self.howdou.ask(q='how many toads can a pickle tickle', output=False)
         print('ret:')
@@ -250,11 +250,11 @@ answers:
 questions:
 -   how do I delete a howdou knowledge base entry
 tags:
--   context: 
+-   context:
 answers:
 -   weight: 1
     date: 2017-2-1
-    source: 
+    source:
     tags:
     formatter: nl
     action_subject: []
@@ -268,14 +268,14 @@ answers:
         self.howdou.add_item(item)
         self.howdou.reindex()
         self.assertEqual(self.howdou.last_reindex_count, 3)
-        
+
         # Ask our original question and confirm the original result.
         ret = self.howdou.ask(q='how do I create a new howdou knowledge base entry', output=False)
         print('ret:')
         pprint(ret, indent=4)
         self.assertEqual(len(ret), 1)
         self.assertEqual(ret[0]['answer'], 'nano ~/.howdou.yml\nhowdou --reindex')
-        
+
         # Ask a question that should find the new entry.
         ret = self.howdou.ask(q='how do I delete a howdou knowledge base entry', output=False)
         print('ret:')

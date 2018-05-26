@@ -14,6 +14,7 @@ import hashlib
 import traceback
 from pprint import pprint
 from commands import getoutput
+from collections import defaultdict
 
 import requests
 #from requests.exceptions import ConnectionError # pylint: disable=redefined-builtin
@@ -23,6 +24,15 @@ from requests.exceptions import SSLError
 from six import text_type, string_types
 
 import yaml
+
+import dateutil.parser
+
+from fake_useragent import UserAgent
+
+from pygments import highlight
+from pygments.lexers import guess_lexer, get_lexer_by_name
+from pygments.formatters import TerminalFormatter # pylint: disable=no-name-in-module
+from pygments.util import ClassNotFound
 
 import requests_cache
 
@@ -36,18 +46,10 @@ try:
 except ImportError:
     from urllib.request import getproxies
 
-from pygments import highlight
-from pygments.lexers import guess_lexer, get_lexer_by_name
-from pygments.formatters import TerminalFormatter # pylint: disable=no-name-in-module
-from pygments.util import ClassNotFound
-
 from pyquery import PyQuery as pq
 
 from elasticsearch import Elasticsearch
 #from elasticsearch.exceptions import NotFoundError
-import dateutil.parser
-
-from fake_useragent import UserAgent
 
 import fasteners
 
@@ -78,8 +80,8 @@ KNOWLEDGEBASE_STUB = '''-   questions:
     answers:
     -   weight: 1
         date: 2014-2-22
-        source: 
-        formatter: 
+        source:
+        formatter:
         text: |
             nano ~/.howdou.yml
             howdou --reindex
@@ -104,17 +106,62 @@ NO_ANSWER_MSG = '< no answer given >'
 QUERY = 'query'
 REINDEX = 'reindex'
 CLEAR_CACHE = 'clear-cache'
-ACTIONS = (QUERY, REINDEX, CLEAR_CACHE)
+SUMMARIZE_FIELD = 'summarize-field'
+FILTER_BY_FIELD = 'filter-by-field'
+ACTIONS = (QUERY, REINDEX, CLEAR_CACHE, SUMMARIZE_FIELD, FILTER_BY_FIELD)
 
 DEFAULT_USERAGENT = 'Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:51.0) Gecko/20100101 Firefox/51.0'
 
 ua = UserAgent(fallback=DEFAULT_USERAGENT)
 
+# Force dictionaries to be serialized in multi-line format.
+def _represent_dictorder(self, data):
+    _data = []
+    ordering = ['questions', 'tags', 'answers', 'weight', 'date', 'source', 'formatter', 'action_subject', 'text']
+    for key in ordering:
+        if key in data:
+            _data.append((str(key), data.pop(key)))
+    if data:
+        _data.extend(data.items())
+    return self.represent_mapping(u'tag:yaml.org,2002:map', _data)
+
+# def _represent_tuple(self, data):
+    # return self.represent_sequence(u'tag:yaml.org,2002:seq', data)
+
+# def _construct_tuple(self, node):
+    # return tuple(self.construct_sequence(node))
+
+# def _represent_function(self, data):
+    # return self.represent_scalar(u'tag:yaml.org,2002:null', u'null')
+
+def _selective_representer(dumper, data):
+    return dumper.represent_scalar(u"tag:yaml.org,2002:str", data, style="|" if "\n" in data else None)
+
+yaml.add_representer(str, _selective_representer)
+yaml.add_representer(unicode, _selective_representer)
+yaml.add_representer(dict, _represent_dictorder)
+# yaml.add_representer(_AliasDict, _represent_dictorder)
+#yaml.add_representer(tuple, _represent_tuple) # we need tuples for hash keys
+# yaml.add_constructor(u'tag:yaml.org,2002:python/tuple', _construct_tuple)
+# yaml.add_representer(types.FunctionType, _represent_function)
+
+def get_nested_key(element, keys):
+    """
+    Returns the key at the nested position inside element, which should be a nested dictionary.
+    """
+    keys = list(keys)
+    if not keys:
+        return element
+    key = keys.pop(0)
+    if key not in element:
+        return
+    return get_nested_key(element[key], keys)
+
 def get_link_at_pos(links, position):
-        
+
     def is_question(link):
         return re.search(r'questions/\d+/', link)
-        
+
     links = [link for link in links if is_question(link)]
     if not links:
         return False
@@ -153,7 +200,7 @@ def get_proxies():
 def find_true_link(s):
     """
     Sometimes Google wraps our links inside sneaky tracking links, which often fail and slow us down
-    so remove them. 
+    so remove them.
     """
     # Convert "/url?q=<real_url>" to "<real_url>".
     if s and s.startswith('/') and 'http' in s:
@@ -161,26 +208,26 @@ def find_true_link(s):
     return s
 
 class HowDoU(object):
-    
+
     def __init__(self, **kwargs):
         kwargs.setdefault('verbose', False)
         self.__dict__.update(kwargs)
-        
+
         if self.verbose:
             print('kwargs:')
             pprint(kwargs, indent=4)
         assert self.action in ACTIONS, 'Invalid action "%s". Must be one of %s' % (self.action, ', '.join(ACTIONS))
-        
+
         self.cache_file = os.path.join(self.cache_dir, 'cache')
 
         self.query = (' '.join(self.query).replace('?', '')).strip()
-        
+
         self.kb_filename = os.path.expanduser(self.kb_filename)
         self.kb_timestamp = os.path.expanduser(self.kb_timestamp)
         self.kb_app_dir = os.path.expanduser(self.kb_app_dir)
-        
+
         self.append_header = False
-        
+
         self.last_reindex_count = 0
 
     def delete_index(self):
@@ -192,7 +239,7 @@ class HowDoU(object):
         es.indices.delete(index=self.kb_index_name, ignore=[400, 404])
         print('Deleting index cache at %s...' % self.kb_app_dir)
         os.system('rm -Rf %s/*' % self.kb_app_dir)
-    
+
     def is_kb_updated(self):
         """
         Returns true if the knowledge base file has changed since the last run.
@@ -206,7 +253,7 @@ class HowDoU(object):
         if modified:
             print('Changes found.')
         return modified
-    
+
     def update_kb_timestamp(self):
         touch(self.kb_timestamp)
 
@@ -217,7 +264,7 @@ class HowDoU(object):
             print('[ERROR] Encountered an SSL Error. Try using HTTP instead of '
                   'HTTPS by setting the environment variable "HOWDOU_DISABLE_SSL".\n')
             raise e
-    
+
     def get_links(self, query):
         localization_url = LOCALIZATON_URLS[self.lang]
         result = self.get_result(SEARCH_URL.format(localization_url, url_quote(query)))
@@ -228,7 +275,7 @@ class HowDoU(object):
         if not self.color:
             return code
         lexer = None
-    
+
         # try to find a lexer using the StackOverflow tags
         # or the query arguments
         for keyword in self.query.split() + self.tags:
@@ -237,11 +284,11 @@ class HowDoU(object):
                 break
             except ClassNotFound:
                 pass
-    
+
         # no lexer found above, use the guesser
         if not lexer:
             lexer = guess_lexer(code)
-    
+
         return highlight(code, lexer, TerminalFormatter(bg='dark'))
 
     def get_answer(self, links):
@@ -253,18 +300,18 @@ class HowDoU(object):
         link = get_link_at_pos(links, self.pos)
         if not link:
             return False, None
-            
+
         # Don't lookup answer text, just return link.
         if self.link:
             return None, link
 
         page = self.get_result(find_true_link(link) + '?answertab=votes')
         html = pq(page)
-    
+
         first_answer = html('.answer').eq(0)
         instructions = first_answer.find('pre') or first_answer.find('code')
         self.tags = [t.text for t in html('.post-tag')]
-    
+
         if not instructions and not self.all:
             text = first_answer.find('.post-text').eq(0).text()
         elif self.all:
@@ -303,7 +350,7 @@ class HowDoU(object):
         hash_fn = os.path.join(self.kb_app_dir, get_text_hash(question_str))
         hash_contents = get_text_hash(answer_str)
         open(hash_fn, 'w').write(hash_contents)
-    
+
     def is_indexed(self, question_str, answer_str):
         """
         Returns true if this exact combination has been previously indexed.
@@ -334,46 +381,81 @@ class HowDoU(object):
         with open(self.kb_filename, 'a') as fout:
             fout.write(item_str)
 
-    def index_kb(self):
-        es = Elasticsearch()
-        count = 0
-        
+    def show_gui_error(self, message, detail):
+        getoutput('export DISPLAY=:0; notify-send "%s" "%s"' % (message, detail))
+
+    def count_total_kb_entries(self, fn=None):
+        cnt = 0
+        for item in self.iter_kb(fn=None):
+            cnt += 1
+        return cnt
+
+    def count_total_kb_answers(self, fn=None):
+        cnt = 0
+        for item in self.iter_kb(fn=None):
+            if 'answers' in item:
+                cnt += len(item['answers'])
+        return cnt
+
+    def iter_kb(self, fn=None):
+        """
+        Iterates over all knowledgebase entries.
+        """
         if not os.path.isdir(self.kb_app_dir):
             os.mkdir(self.kb_app_dir)
-            
+        fn = fn or self.kb_filename
+        try:
+            for item in yaml.load(open(fn)):
+                if isinstance(item, dict) and 'include' in item:
+                    # Handle special "include" entries that direct us to load an additional file.
+                    for _ in self.iter_kb(item['include']):
+                        yield _
+                else:
+                    # Otherwise, yield normal entry.
+                    yield item
+        except TypeError:
+            return
+
+    def index_kb(self):
+        """
+        Processes all knowledgebase entries and enters them into the text search database.
+        """
+        es = Elasticsearch()
+        count = 0
+
+        if not os.path.isdir(self.kb_app_dir):
+            os.mkdir(self.kb_app_dir)
+
         if self.force:
             self.delete_index()
         elif not self.is_kb_updated():
             print('No changes detected.')
             return
-        
+
         # Count total combinations so we can accurately measure progress.
-        total = 0
         self.vprint('kb_filename:', self.kb_filename)
         try:
-            for item in yaml.load(open(self.kb_filename)):
-                for answer in item['answers']:
-                    total += 1
+            total = self.count_total_kb_answers()
         except yaml.scanner.ScannerError as exc:
             traceback.print_exc()
-            getoutput('export DISPLAY=:0; notify-send "HowDoU Re-Indexing Error" "%s"' % exc)
+            self.show_gui_error('HowDoU Re-Indexing Error', exc)
             sys.exit(1)
 
-        for item in yaml.load(open(self.kb_filename)):
-            
+        for item in self.iter_kb(self.kb_filename):
+
             # Combine the list of separate questions into a single text block.
             print('item:', item)
             questions = u'\n'.join(map(text_type, item['questions']))
             self.vprint('questions:', questions)
-            
+
             for answer in item['answers']:
                 count += 1
                 sys.stdout.write('\rRe-indexing %i of %i...' % (count, total))
                 sys.stdout.flush()
-                
+
                 if not self.force and self.is_indexed(questions, answer['text']):
                     continue
-                
+
                 weight = float(answer.get('weight', 1))
                 dt = answer['date']
                 if isinstance(dt, string_types):
@@ -381,11 +463,11 @@ class HowDoU(object):
                         dt = dateutil.parser.parse(dt)
                     except ValueError as e:
                         raise Exception('Invalid date: %s' % dt)
-                
+
                 text = questions + ' ' + answer['text']
-                
+
                 _id = get_text_hash(text)
-                
+
                 doc = dict(
                     questions=questions,
                     answer=answer['text'],
@@ -398,7 +480,7 @@ class HowDoU(object):
                 if self.verbose:
                     print('doc:')
                     pprint(doc, indent=4)
-                
+
                 # Register this combination in the database.
                 # https://elasticsearch-py.readthedocs.io/en/master/api.html#elasticsearch.Elasticsearch.index
                 es.index(
@@ -410,22 +492,22 @@ class HowDoU(object):
     #                ),
                     body=doc,
                 )
-                
+
                 # Record a hash of this combination so we can skip it next time.
                 self.mark_indexed(questions, answer['text'])
-        
-        self.last_reindex_count = count       
+
+        self.last_reindex_count = count
         es.indices.refresh(index=self.kb_index_name)
         self.update_kb_timestamp()
         print('\nRe-indexed %i items.' % (count,))
-    
+
     def vprint(self, *args):
         if self.verbose:
             print(' '.join(map(str, args)))
             sys.stdout.flush()
-    
+
     def get_local_answers(self, q=None):
-        
+
         def _get_search_results(exact=True):
             # https://www.elastic.co/guide/en/elasticsearch/reference/current/query-dsl-query-string-query.html
             # https://www.elastic.co/guide/en/elasticsearch/reference/current/query-dsl-function-score-query.html#CO158-1
@@ -457,10 +539,10 @@ class HowDoU(object):
             if self.verbose:
                 print('es_query:')
                 pprint(es_query, indent=4)
-                
+
             results = es.search(index=self.kb_index_name, body=es_query)
             return results
-                
+
         query = q or self.query
         assert query and isinstance(query, string_types), 'Invalid query: %s' % query
         answers = []
@@ -489,7 +571,7 @@ class HowDoU(object):
                     score = hit['_score']
                     if self.min_score >= 0 and score < self.min_score:
                         continue
-                    
+
                     answer_data['answer'] = hit['_source']['answer'].strip()
                     answer_data['score'] = score
                     answer_data['source'] = (hit['_source'].get('source') or '').strip() or None
@@ -499,61 +581,61 @@ class HowDoU(object):
                     if self.verbose:
                         print('answer_data:')
                         pprint(answer_data, indent=4)
-                        
+
     #                 if self.append_header:
     #                     if answer_prefixes:
     #                         answer = '\n'.join(answer_prefixes) + '\n\n' + answer
     #                     answer = ANSWER_HEADER.format(current_position, answer)
     #                 answer = answer + '\n'
                     answers.append(answer_data)
-                    
+
             # First try finding an entry with all the keywords using the AND operator.
             # If nothing found, then continue by searching for entries with any of the keywords
             # using the OR operator.
             if total:
                 break
-                        
+
         return answers
-    
+
     def reindex(self, *args, **kwargs):
         return self.run_reindex(*args, **kwargs)
 
     def ask(self, *args, **kwargs):
         return self.run_query(*args, **kwargs)
-        
+
     def run_query(self, q=None, output=True):
         query = q or self.query
-        
+
         # Elasticsearch tokenizes text on certain non-alphanumeric characters,
         # so increase a queries chances of finding an exact match by removing these tokens.
         query = re.sub(r'[\:\-]+', ' ', query)
-        
+
         answers = []
         if query:
             with fasteners.InterProcessLock(self.kb_lockfile_path):
-                
+
                 self.init_kb()
-                
+
                 # enable the cache if user doesn't want it to be disabled
                 if not self.disable_cache:
                     self.enable_cache()
-                
+
                 self.append_header = self.num_answers > 1 or self.show_score or self.show_source
                 #initial_position = self.pos
-                
+
                 self.vprint('Querying %s...' % query)
-                
+
                 # Check local index first.
                 #http://elasticsearch.org/guide/reference/query-dsl/
                 #http://www.elasticsearch.org/guide/en/elasticsearch/reference/current/query-dsl-query-string-query.html
                 if not self.ignore_local:
                     answers.extend(self.get_local_answers(query))
-                                
+
         #             except NotFoundError as e:
         #                 print('Local lookup error:', file=sys.stderr)
         #                 print(e, file=sys.stderr)
         #                 raise
-                
+
                 # If we found nothing satisfying locally, then search the net.
                 if not answers and not self.ignore_remote:
                     links = self.get_links(query)
@@ -574,7 +656,7 @@ class HowDoU(object):
 #                                 answer = '\n'.join(answer_prefixes) + '\n\n' + (answer or '')
 #                             answer = ANSWER_HEADER.format(current_position, answer)
 #                         answer = answer + '\n'
-                        
+
                         answer_data = {}
                         answer_data['answer'] = answer
                         answer_data['score'] = 1.0
@@ -583,7 +665,7 @@ class HowDoU(object):
                         answer_data['weight'] = 1.0
                         answer_data['location'] = 'remote'
                         answers.append(answer_data)
-        
+
         if output:
             s = []
             for i, answer in enumerate(answers):
@@ -594,7 +676,7 @@ class HowDoU(object):
                     weight=int(answer['weight'] or 0),
                     answer=answer['answer'],
                     source=source_str))
-                    
+
 #         if not args['just_check']:
 #             if sys.version < '3':
 #                 print(howdou(args).encode('utf-8', 'ignore'))
@@ -607,7 +689,7 @@ class HowDoU(object):
 #         else:
 #             print(howdou(args))
 
-            output_str = u'\n'+(u'\n\n'.join(s))+u'\n'        
+            output_str = u'\n'+(u'\n\n'.join(s))+u'\n'
             output_str.encode('utf-8', 'replace')
             try:
                 # Try to print unicode.
@@ -616,15 +698,52 @@ class HowDoU(object):
                 # If the console forces us to use ASCII, then force ASCII.
                 print(output_str.encode('ascii', 'replace'))
             return output_str
-                     
+
         return answers
-        
+
     def run_clear_cache(self):
         self.clear_cache()
-    
+
     def run_reindex(self):
         with fasteners.InterProcessLock(self.kb_lockfile_path):
             self.index_kb()
+
+    def run_summarize_field(self):
+        """
+        Iterates over all knowledgebase items and counts the values associated with the given field path.
+        """
+        path = [_.strip() for _ in self.query.split('.') if _.strip()]
+        assert path, 'No query path specified.'
+        self.vprint('Searching path:', path)
+        counts = defaultdict(int)
+        for item in self.iter_kb():
+            value = get_nested_key(item, path)
+            counts[value] += 1
+        for v, cnt in sorted(counts.items(), key=lambda o: o[1]):
+            print(cnt, v)
+
+    def run_filter_by_field(self):
+        """
+        Iterates over all knowledgebase items and prints those that correspond to the given field path.
+        """
+        path, target = self.query.split(' ')
+        path = [_.strip() for _ in path.split('.') if _.strip()]
+        assert path, 'No query path specified.'
+        self.vprint('Searching path:', path)
+        self.vprint('Target:', target)
+        data = []
+        for item in self.iter_kb():
+            value = str(get_nested_key(item, path))
+            if value != target:
+                continue
+            if 'answers' in item:
+                for answer in item['answers']:
+                    answer['text'] = answer['text'].encode('ascii', 'replace')
+                    answer['text'] = re.sub(r'\n[\t\s]+\n', '\n\n', answer['text'], flags=re.M)
+                    answer['text'] = re.sub(r'(?<=[^\n\t\s])[ ]+(?=$)', '', answer['text'], flags=re.M)
+                    answer['text'] = answer['text'].strip() + '\n\n'
+            data.append(item)
+        yaml.dump(data, stream=sys.stdout, default_flow_style=False, indent=4)
 
     def run(self):
         run_func = 'run_%s' % self.action.replace('-', '_')
@@ -632,7 +751,7 @@ class HowDoU(object):
             return getattr(self, run_func)()
         else:
             raise AttributeError('Invalid action: %s' % self.action)
-         
+
 #         if not query:
 #             return ''
 #         try:
@@ -643,7 +762,7 @@ class HowDoU(object):
 
 def get_parser():
     parser = argparse.ArgumentParser(description='instant coding answers via the command line')
-    
+
     # General purpose options.
     parser.add_argument(
         '-v', '--version',
@@ -690,7 +809,7 @@ def get_parser():
         '--action',
         help='Action to perform. One of %s' % ('|'.join(ACTIONS)),
         default=QUERY)
-    
+
     # Query action options.
     parser.add_argument(
         'query', metavar='QUERY', type=str, nargs='*',
@@ -742,7 +861,7 @@ def get_parser():
         help='Disables cache of web requests.',
         default=bool(os.getenv('HOWDOU_DISABLE_CACHE')),
         action='store_true')
-    
+
     # Reindex action options.
     parser.add_argument(
         '--force',
