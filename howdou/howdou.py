@@ -6,14 +6,17 @@ from __future__ import unicode_literals
 
 import argparse
 import datetime
-import glob
+# import glob
 import os
 import re
 import sys
 import hashlib
 import traceback
 from pprint import pprint
-from commands import getoutput
+try:
+    from commands import getoutput
+except ImportError:
+    from subprocess import getoutput
 from collections import defaultdict
 
 import requests
@@ -34,7 +37,7 @@ from pygments.lexers import guess_lexer, get_lexer_by_name
 from pygments.formatters import TerminalFormatter # pylint: disable=no-name-in-module
 from pygments.util import ClassNotFound
 
-import requests_cache
+# import requests_cache
 
 try:
     from urllib.parse import quote as url_quote
@@ -46,12 +49,12 @@ try:
 except ImportError:
     from urllib.request import getproxies
 
+import fasteners
+
 from pyquery import PyQuery as pq
 
 from elasticsearch import Elasticsearch
 #from elasticsearch.exceptions import NotFoundError
-
-import fasteners
 
 #from howdou import __version__
 from .__init__ import __version__
@@ -138,7 +141,7 @@ def _selective_representer(dumper, data):
     return dumper.represent_scalar(u"tag:yaml.org,2002:str", data, style="|" if "\n" in data else None)
 
 yaml.add_representer(str, _selective_representer)
-yaml.add_representer(unicode, _selective_representer)
+yaml.add_representer(text_type, _selective_representer)
 yaml.add_representer(dict, _represent_dictorder)
 # yaml.add_representer(_AliasDict, _represent_dictorder)
 #yaml.add_representer(tuple, _represent_tuple) # we need tuples for hash keys
@@ -247,12 +250,14 @@ class HowDoU(object):
         if not os.path.isfile(self.kb_timestamp):
             print('First-time indexing required.')
             return True
-        kb_last_modified = datetime.datetime.fromtimestamp(os.path.getmtime(self.kb_filename))
-        timestamp_last_modified = datetime.datetime.fromtimestamp(os.path.getmtime(self.kb_timestamp))
-        modified = kb_last_modified > timestamp_last_modified
-        if modified:
-            print('Changes found.')
-        return modified
+        kb_filenames = list(self.iter_kb(only_filenames=True))
+        for kb_filename in kb_filenames:
+            kb_last_modified = datetime.datetime.fromtimestamp(os.path.getmtime(kb_filename))
+            timestamp_last_modified = datetime.datetime.fromtimestamp(os.path.getmtime(self.kb_timestamp))
+            if kb_last_modified > timestamp_last_modified:
+                print('Changes found.')
+                return True
+        return False
 
     def update_kb_timestamp(self):
         touch(self.kb_timestamp)
@@ -332,14 +337,14 @@ class HowDoU(object):
         text = text.strip()
         return text, link
 
-    def enable_cache(self):
-        if not os.path.exists(self.cache_dir):
-            os.makedirs(self.cache_dir)
-        requests_cache.install_cache(self.cache_file)
+    # def enable_cache(self):
+        # if not os.path.exists(self.cache_dir):
+            # os.makedirs(self.cache_dir)
+        # requests_cache.install_cache(self.cache_file)
 
-    def clear_cache(self):
-        for cache in glob.glob('{0}*'.format(self.cache_file)):
-            os.remove(cache)
+    # def clear_cache(self):
+        # for cache in glob.glob('{0}*'.format(self.cache_file)):
+            # os.remove(cache)
 
     def init_kb(self):
         if not os.path.isfile(self.kb_filename):
@@ -397,19 +402,24 @@ class HowDoU(object):
                 cnt += len(item['answers'])
         return cnt
 
-    def iter_kb(self, fn=None):
+    def iter_kb(self, fn=None, only_filenames=False):
         """
         Iterates over all knowledgebase entries.
         """
         if not os.path.isdir(self.kb_app_dir):
             os.mkdir(self.kb_app_dir)
+        if only_filenames and fn is None:
+            yield self.kb_filename
         fn = fn or self.kb_filename
         try:
             for item in yaml.load(open(fn)):
                 if isinstance(item, dict) and 'include' in item:
                     # Handle special "include" entries that direct us to load an additional file.
-                    for _ in self.iter_kb(item['include']):
-                        yield _
+                    if only_filenames:
+                        yield item['include']
+                    else:
+                        for _ in self.iter_kb(item['include']):
+                            yield _
                 else:
                     # Otherwise, yield normal entry.
                     yield item
@@ -445,8 +455,11 @@ class HowDoU(object):
 
             # Combine the list of separate questions into a single text block.
             print('item:', item)
-            questions = u'\n'.join(map(text_type, item['questions']))
+            questions = u'\n'.join(map(text_type, item.get('questions') or []))
             self.vprint('questions:', questions)
+            if not questions:
+                print('Skipping due to missing questions.')
+                continue
 
             for answer in item['answers']:
                 count += 1
@@ -617,8 +630,8 @@ class HowDoU(object):
                 self.init_kb()
 
                 # enable the cache if user doesn't want it to be disabled
-                if not self.disable_cache:
-                    self.enable_cache()
+                # if not self.disable_cache:
+                    # self.enable_cache()
 
                 self.append_header = self.num_answers > 1 or self.show_score or self.show_source
                 #initial_position = self.pos
@@ -701,8 +714,8 @@ class HowDoU(object):
 
         return answers
 
-    def run_clear_cache(self):
-        self.clear_cache()
+    # def run_clear_cache(self):
+        # self.clear_cache()
 
     def run_reindex(self):
         with fasteners.InterProcessLock(self.kb_lockfile_path):
@@ -856,11 +869,11 @@ def get_parser():
         dest='show_source',
         default=True,
         action='store_false')
-    parser.add_argument(
-        '--disable-cache',
-        help='Disables cache of web requests.',
-        default=bool(os.getenv('HOWDOU_DISABLE_CACHE')),
-        action='store_true')
+    # parser.add_argument(
+        # '--disable-cache',
+        # help='Disables cache of web requests.',
+        # default=bool(os.getenv('HOWDOU_DISABLE_CACHE')),
+        # action='store_true')
 
     # Reindex action options.
     parser.add_argument(
