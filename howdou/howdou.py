@@ -69,6 +69,9 @@ else:
     def u(x):
         return x
 
+LOCAL = 'local'
+REMOTE = 'remote'
+
 KNOWLEDGEBASE_FN = os.path.expanduser(os.getenv('HOWDOU_KB', '~/.howdou.yml'))
 KNOWLEDGEBASE_INDEX = os.getenv('HOWDOU_INDEX', 'howdou')
 KNOWLEDGEBASE_TIMESTAMP_FN = os.path.expanduser(os.getenv('HOWDOU_TIMESTAMP', '~/.howdou_last'))
@@ -102,7 +105,7 @@ LOCALIZATON_URLS = {
     'pt-br': 'pt.stackoverflow.com',
 }
 
-ANSWER_HEADER = u('--- Answer {i} --- score: {score} --- weight: {weight} --- {source} ---\n\n{answer}')
+ANSWER_HEADER = u('--- Answer: {i} --- Weight: {weight} --- Source: {source} ---\n\n{answer}')
 
 NO_ANSWER_MSG = '< no answer given >'
 
@@ -337,14 +340,11 @@ class HowDoU(object):
         text = text.strip()
         return text, link
 
-    # def enable_cache(self):
-        # if not os.path.exists(self.cache_dir):
-            # os.makedirs(self.cache_dir)
-        # requests_cache.install_cache(self.cache_file)
+    def run_clear_cache(self):
+        self.clear_cache()
 
-    # def clear_cache(self):
-        # for cache in glob.glob('{0}*'.format(self.cache_file)):
-            # os.remove(cache)
+    def clear_cache(self):
+        self.delete_index()
 
     def init_kb(self):
         if not os.path.isfile(self.kb_filename):
@@ -412,7 +412,7 @@ class HowDoU(object):
             yield self.kb_filename
         fn = fn or self.kb_filename
         try:
-            for item in yaml.load(open(fn)):
+            for item in yaml.load(open(fn), Loader=yaml.FullLoader):
                 if isinstance(item, dict) and 'include' in item:
                     # Handle special "include" entries that direct us to load an additional file.
                     if only_filenames:
@@ -422,6 +422,8 @@ class HowDoU(object):
                             yield _
                 else:
                     # Otherwise, yield normal entry.
+                    # Dynamically add filename so it can be indexed and included in search results.
+                    item['filename'] = fn
                     yield item
         except TypeError:
             return
@@ -485,6 +487,7 @@ class HowDoU(object):
                     questions=questions,
                     answer=answer['text'],
                     source=answer.get('source', ''),
+                    filename=item['filename'],
                     text=text,
                     action_subject=answer.get('action_subject'),
                     timestamp=dt,
@@ -588,18 +591,14 @@ class HowDoU(object):
                     answer_data['answer'] = hit['_source']['answer'].strip()
                     answer_data['score'] = score
                     answer_data['source'] = (hit['_source'].get('source') or '').strip() or None
+                    _fn = hit['_source']['filename']
+                    answer_data['filename'] = _fn
                     answer_data['text'] = hit['_source']['text']
                     answer_data['weight'] = hit['_source']['weight']
-                    answer_data['location'] = 'local'
+                    answer_data['location'] = LOCAL
                     if self.verbose:
                         print('answer_data:')
                         pprint(answer_data, indent=4)
-
-    #                 if self.append_header:
-    #                     if answer_prefixes:
-    #                         answer = '\n'.join(answer_prefixes) + '\n\n' + answer
-    #                     answer = ANSWER_HEADER.format(current_position, answer)
-    #                 answer = answer + '\n'
                     answers.append(answer_data)
 
             # First try finding an entry with all the keywords using the AND operator.
@@ -644,65 +643,43 @@ class HowDoU(object):
                 if not self.ignore_local:
                     answers.extend(self.get_local_answers(query))
 
-        #             except NotFoundError as e:
-        #                 print('Local lookup error:', file=sys.stderr)
-        #                 print(e, file=sys.stderr)
-        #                 raise
-
                 # If we found nothing satisfying locally, then search the net.
                 if not answers and not self.ignore_remote:
                     links = self.get_links(query)
                     if not links:
                         return False
                     for answer_number in range(self.num_answers):
-                        #current_position = answer_number + initial_position
-#                         self.pos = current_position
                         result = self.get_answer(links)
-#                         print('result:', result)
                         answer, link = result
                         if not answer and not link:
                             continue
-#                         answer_prefixes = []
-#                         if append_header:
-#                             answer_prefixes.append('source: %s (remote)' % link)
-#                             if answer_prefixes:
-#                                 answer = '\n'.join(answer_prefixes) + '\n\n' + (answer or '')
-#                             answer = ANSWER_HEADER.format(current_position, answer)
-#                         answer = answer + '\n'
 
                         answer_data = {}
                         answer_data['answer'] = answer
                         answer_data['score'] = 1.0
                         answer_data['source'] = link
+                        answer_data['filename'] = None
                         answer_data['text'] = None
                         answer_data['weight'] = 1.0
-                        answer_data['location'] = 'remote'
+                        answer_data['location'] = REMOTE
                         answers.append(answer_data)
 
         if output:
             s = []
             for i, answer in enumerate(answers):
-                source_str = 'source: %s (%s)' % (answer['source'], answer['location'])
+                if answer['location'] == LOCAL:
+                    source = answer['filename']
+                else:
+                    source = answer['source']
+                score = int(round(answer['score'] or 0, 0))
+                weight = int(answer['weight'] or 0)
                 s.append(ANSWER_HEADER.format(
                     i=i+1,
-                    score=int(round(answer['score'] or 0, 0)),
-                    weight=int(answer['weight'] or 0),
+                    weight=score*weight,
                     answer=answer['answer'],
-                    source=source_str))
+                    source=source))
 
-#         if not args['just_check']:
-#             if sys.version < '3':
-#                 print(howdou(args).encode('utf-8', 'ignore'))
-#             else:
-#                 print(howdou(args))
-
-#     if not args['just_check']:
-#         if sys.version < '3':
-#             print(howdou(args).encode('utf-8', 'ignore'))
-#         else:
-#             print(howdou(args))
-
-            output_str = u'\n'+(u'\n\n'.join(s))+u'\n'
+            output_str = u'\n' + (u'\n\n'.join(s)) + u'\n'
             output_str.encode('utf-8', 'replace')
             try:
                 # Try to print unicode.
@@ -713,9 +690,6 @@ class HowDoU(object):
             return output_str
 
         return answers
-
-    # def run_clear_cache(self):
-        # self.clear_cache()
 
     def run_reindex(self):
         with fasteners.InterProcessLock(self.kb_lockfile_path):
@@ -764,13 +738,6 @@ class HowDoU(object):
             return getattr(self, run_func)()
         else:
             raise AttributeError('Invalid action: %s' % self.action)
-
-#         if not query:
-#             return ''
-#         try:
-#             return self.get_instructions() or 'Sorry, couldn\'t find any help with that topic.\n'
-#         except (ConnectionError, SSLError):
-#             return 'Failed to establish network connection.\n'
 
 
 def get_parser():

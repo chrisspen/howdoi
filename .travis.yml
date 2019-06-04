@@ -6,7 +6,7 @@ install:
 # Elasticsearch 5.* requires Java 1.8 or higher.
 -   sudo apt-add-repository -y ppa:webupd8team/java
 -   sudo apt-get update
--   sudo apt-get install -y python-dev python3-dev python3.4-minimal python3.4-dev python3.5-minimal python3.5-dev python3.6-minimal python3.6-dev pandoc oracle-java8-installer
+-   sudo apt-get install -y python-dev python3.7-minimal python3.7-dev pandoc oracle-java8-installer
 -   "java -version"
 # https://www.elastic.co/downloads/elasticsearch
 -   sudo apt-get -yq purge elasticsearch || true
