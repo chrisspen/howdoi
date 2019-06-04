@@ -28,6 +28,8 @@ install:
 -   sleep 5
 -   sudo service elasticsearch start
 -   sleep 5
+-   python --version
+-   pip --version
 -   sudo pip install -r requirements-test.txt
 script:
 -   ./pep8.sh
