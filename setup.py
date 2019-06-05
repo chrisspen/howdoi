@@ -1,16 +1,11 @@
 #!/usr/bin/env python
 import os
 
-from setuptools import setup, find_packages#, Command
+from setuptools import setup, find_packages
 
 import howdou
 
-try:
-    from pypandoc import convert
-    read_md = lambda f: convert(f, 'rst')
-except ImportError:
-    print('warning: pypandoc module not found, could not convert Markdown to RST')
-    read_md = lambda f: open(f, 'r').read()
+read_md = lambda f: open(f, 'r').read()
 
 CURRENT_DIR = os.path.abspath(os.path.dirname(__file__))
 
@@ -29,12 +24,13 @@ setup(
     version=howdou.__version__,
     description='Instant coding answers via the command line',
     long_description=read_md('README.md'),
+    long_description=long_description,
+    long_description_content_type='text/markdown',
     #https://pypi.python.org/pypi?%3Aaction=list_classifiers
     classifiers=[
         'Development Status :: 5 - Production/Stable',
         'Environment :: Console',
         'Intended Audience :: Developers',
-        'Programming Language :: Python :: 2.7',
         'Programming Language :: Python :: 3.7',
         'Topic :: Documentation',
     ],
