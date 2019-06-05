@@ -19,12 +19,12 @@ except ImportError:
     from subprocess import getoutput
 from collections import defaultdict
 
+#https://pythonhosted.org/six/
+from six import text_type, string_types
+
 import requests
 #from requests.exceptions import ConnectionError # pylint: disable=redefined-builtin
 from requests.exceptions import SSLError
-
-#https://pythonhosted.org/six/
-from six import text_type, string_types
 
 import yaml
 
@@ -213,7 +213,7 @@ def find_true_link(s):
         s = s[s.find('http'):]
     return s
 
-class HowDoU(object):
+class HowDoU():
 
     def __init__(self, **kwargs):
         kwargs.setdefault('verbose', False)
@@ -736,8 +736,7 @@ class HowDoU(object):
         run_func = 'run_%s' % self.action.replace('-', '_')
         if hasattr(self, run_func):
             return getattr(self, run_func)()
-        else:
-            raise AttributeError('Invalid action: %s' % self.action)
+        raise AttributeError('Invalid action: %s' % self.action)
 
 
 def get_parser():

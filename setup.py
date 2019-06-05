@@ -24,7 +24,6 @@ setup(
     version=howdou.__version__,
     description='Instant coding answers via the command line',
     long_description=read_md('README.md'),
-    long_description=long_description,
     long_description_content_type='text/markdown',
     #https://pypi.python.org/pypi?%3Aaction=list_classifiers
     classifiers=[
